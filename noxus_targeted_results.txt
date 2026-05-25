@@ -1,0 +1,4 @@
+﻿ROOT=C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss
+COPIED_REFERENCES=C:\Users\Lolme\OneDrive\Desktop\PsychoOverlay\NoxusReferences
+
+== Exact code references ==

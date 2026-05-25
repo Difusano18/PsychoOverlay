@@ -1,0 +1,13 @@
+bin/
+obj/
+publish/
+publish_portable/
+publish_single/
+decompiled_final/
+*.pdb
+*.runtimeconfig.json
+*.deps.json
+PsychoOverlay_publish.zip
+PsychoOverlay_portable_win-x64.zip
+.vs/
+.vscode/

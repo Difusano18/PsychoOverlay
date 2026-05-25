@@ -1,0 +1,299 @@
+﻿DOCS=C:\Users\Lolme\OneDrive\Документы
+ROOT=C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss
+ROOT_EXISTS=True
+
+== AGENTS.md files ==
+
+== Root items ==
+
+Mode   Length   LastWriteTime      Name                                          
+----   ------   -------------      ----                                          
+da---l          25.05.2026 2:35:55 .git                                          
+da---l          25.05.2026 2:35:55 .github                                       
+da---l          25.05.2026 2:35:56 Assets                                        
+da---l          25.05.2026 2:36:13 bin                                           
+da---l          25.05.2026 2:35:59 Content                                       
+da---l          25.05.2026 2:35:59 Core                                          
+da---l          25.05.2026 2:36:00 lib                                           
+da---l          25.05.2026 2:36:00 Localization                                  
+da---l          25.05.2026 2:36:13 obj                                           
+da---l          25.05.2026 2:36:00 Properties                                    
+da---l          25.05.2026 2:36:14 WoTGAssetRebuilder                            
+-a---l 8777     25.05.2026 2:06:12 .editorconfig                                 
+-a---l 68       25.05.2026 2:06:12 .gitattributes                                
+-a---l 7259     25.05.2026 2:06:12 .gitignore                                    
+-a---l 517      25.05.2026 3:25:08 build.txt                                     
+-a---l 1657     25.05.2026 2:06:15 Changelogs.md                                 
+-a---l 983      25.05.2026 2:06:15 description.txt                               
+-a---l 143      25.05.2026 3:14:14 GlobalUsings.cs                               
+-a---l 11428539 25.05.2026 2:06:15 I'm sorry about this mod's code, dataminer.mp4
+-a---l 1633     25.05.2026 2:06:15 icon.png                                      
+-a---l 360      25.05.2026 2:06:15 icon_small.png                                
+-a---l 17720    25.05.2026 2:06:15 icon_workshop.png                             
+-a---l 1164     25.05.2026 2:06:15 NoxusBoss.cs                                  
+-a---l 1322     25.05.2026 3:01:02 NoxusBoss.csproj                              
+-a---l 1123     25.05.2026 2:06:15 NoxusBoss.sln                                 
+-a---l 145      25.05.2026 2:06:15 README.md                                     
+
+
+
+
+== Filename matches ==
+
+FullName                                                                                                                                                                      
+--------                                                                                                                                                                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AnimeFocusLinesShader.fx                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AnimeFocusLinesShader.fxc                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AnnihilationSphereOverlayShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AnnihilationSphereOverlayShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AntishadowSilhouetteShader.fx                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AntishadowSilhouetteShader.fxc                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarDistanceDistortionShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarDistanceDistortionShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarRealityTearShader.fx                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarRealityTearShader.fxc                              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarRiftSpaghettificationShader.fx                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarRiftSpaghettificationShader.fxc                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarUniverseRedFogShader.fx                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarUniverseRedFogShader.fxc                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarUniverseSuperSmokeShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\AvatarUniverseSuperSmokeShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BlackHoleColorShader.fx                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BlackHoleColorShader.fxc                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BlackHoleDistortionShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BlackHoleDistortionShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BlackHoleShader.fx                                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BlackHoleShader.fxc                                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BloodDropletOverlayShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BloodDropletOverlayShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BloodWhirlpoolSwirlShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\BloodWhirlpoolSwirlShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\CollapsingStarVignetteShader.fx                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\CollapsingStarVignetteShader.fxc                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\DesaturationOverlayShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\DesaturationOverlayShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\ExtremeBlurSaturationShader.fx                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\ExtremeBlurSaturationShader.fxc                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\GenesisOverlayShader.fx                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\GenesisOverlayShader.fxc                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\GenesisWaveMotionBlurShader.fx                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\GenesisWaveMotionBlurShader.fxc                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\HeatDistortionShader.fx                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\HeatDistortionShader.fxc                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\LightSlashesOverlayShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\LightSlashesOverlayShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\LocalScreenDistortionShader.fx                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\LocalScreenDistortionShader.fxc                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessClockDeathZoneShader.fx                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessClockDeathZoneShader.fxc                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessDeityLoreItemDistortionShader.fx                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessDeityLoreItemDistortionShader.fxc                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessDeityScreenTearShader.fx                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessDeityScreenTearShader.fxc                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessScreenSplitShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NamelessScreenSplitShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NilkScreenDistortionShader.fx                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\NilkScreenDistortionShader.fxc                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\PsychedelicShader.fx                                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\PsychedelicShader.fxc                                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\RadialMotionBlurShader.fx                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\RadialMotionBlurShader.fxc                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\RealityPunchOverlayShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\RealityPunchOverlayShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\ScreenDataHeatDistortionShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\ScreenDataHeatDistortionShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\ScreenDistortionShader.fx                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\ScreenDistortionShader.fxc                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\SolynTentInteriorOverlayShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\SolynTentInteriorOverlayShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\StrongRealityPunchOverlayShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\StrongRealityPunchOverlayShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\SuctionSpiralShader.fx                                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\SuctionSpiralShader.fxc                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\TileDistortionShader.fx                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\TileDistortionShader.fxc                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\ChromaticAberrationShader.fx                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\ChromaticAberrationShader.fxc                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\HighContrastScreenShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\HighContrastScreenShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\RadialScreenShoveShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\RadialScreenShoveShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\SourcedRadialMotionBlurShader.fx                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\General\SourcedRadialMotionBlurShader.fxc                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\TileEffects\AvatarTrophyStaticShader.fx                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\TileEffects\AvatarTrophyStaticShader.fxc                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\WaterOverlays\CosmicWaterShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Filters\WaterOverlays\CosmicWaterShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\DichromaticGlossDyeShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\DichromaticGlossDyeShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\EntropicDyeShader.fx                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\EntropicDyeShader.fxc                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\GenderDyeShader.fx                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\GenderDyeShader.fxc                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\GodglimmerDyeShader.fx                              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\GodglimmerDyeShader.fxc                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\GoodDyeShader.fx                                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\GoodDyeShader.fxc                                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\MoonBurnDyeShader.fx                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\MoonBurnDyeShader.fxc                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\NuminousDyeShader.fx                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\NuminousDyeShader.fxc                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\ParadiseDyeShader.fx                                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\ParadiseDyeShader.fxc                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\ScarletShadeDyeShader.fx                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\ScarletShadeDyeShader.fxc                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\SuperstarDyeShader.fx                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\SuperstarDyeShader.fxc                              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\TriadicFractureDyeShader.fx                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\TriadicFractureDyeShader.fxc                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\Hair\SuperstarHairDyeShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Dyes\Hair\SuperstarHairDyeShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\FluidSimulations\AdvectionShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\FluidSimulations\AdvectionShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\FluidSimulations\DiffusionShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\FluidSimulations\DiffusionShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\FluidSimulations\FluidOutputShader.fx                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\FluidSimulations\FluidOutputShader.fxc                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\AmorphoblightMetaballShader.fx                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\AmorphoblightMetaballShader.fxc                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\BinaryMetaballShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\BinaryMetaballShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\BloodMetaballShader.fx                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\BloodMetaballShader.fxc                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\MetaballEdgeShader.fx                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\PaleAvatarBlobMetaballShader.fx                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\PaleAvatarBlobMetaballShader.fxc               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\PurifyingMatterMetaballShader.fx               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Metaballs\PurifyingMatterMetaballShader.fxc              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\PortalShader.fx                                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\PortalShader.fxc                                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\RadialShineShader.fx                             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\RadialShineShader.fxc                            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\ShockwaveShader.fx                               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\ShockwaveShader.fxc                              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AnnihilationSphereShader.fx               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AnnihilationSphereShader.fxc              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarBloodyTearsShader.fx                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarBloodyTearsShader.fxc               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarLoreItemBlackHoleShader.fx          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarLoreItemBlackHoleShader.fxc         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarLoreItemBloodVortexShader.fx        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarLoreItemBloodVortexShader.fxc       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarRiftMouthShader.fx                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarRiftMouthShader.fxc                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarRiftShapeShader.fx                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarRiftShapeShader.fxc                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarSmokeShapeShader.fx                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarSmokeShapeShader.fxc                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarSunShader.fx                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\AvatarSunShader.fxc                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\CryostasisMistWallShader.fx               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\CryostasisMistWallShader.fxc              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\DarkPortalShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\DarkPortalShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\DeadSunShader.fx                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\DeadSunShader.fxc                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\LightFloorCrackShader.fx                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\LightFloorCrackShader.fxc                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\SolynForcefieldShader.fx                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\SolynForcefieldShader.fxc                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\StellarRemnantShader.fx                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\StellarRemnantShader.fxc                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\StolenPlanetoidShader.fx                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\StolenPlanetoidShader.fxc                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\VoidBlotEdgeShader.fx                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\VoidBlotEdgeShader.fxc                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\VoidBlotShader.fx                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Avatar\VoidBlotShader.fxc                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\EternalGarden\GodRayShader.fx                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\EternalGarden\GodRayShader.fxc                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\BurnMarkShader.fx                           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\BurnMarkShader.fxc                          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\MassiveElectricShockwaveShader.fx           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\MassiveElectricShockwaveShader.fxc          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\TeslaFieldShader.fx                         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\TeslaFieldShader.fxc                        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\TrappingHolographicForcefieldShader.fx      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\TrappingHolographicForcefieldShader.fxc     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\UnstableMatterShader.fx                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\UnstableMatterShader.fxc                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\Solyn\DirectionalSolynForcefieldShader.fx   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\Solyn\DirectionalSolynForcefieldShader.fxc  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\Solyn\StarImpactShader.fx                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\Mars\Solyn\StarImpactShader.fxc                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\DreamcatcherShader.fx              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\DreamcatcherShader.fxc             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\FireExplosionShader.fx             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\FireExplosionShader.fxc            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\GalaxyShader.fx                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\GalaxyShader.fxc                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\JuliaSetFractalShader.fx           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\JuliaSetFractalShader.fxc          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\NamelessConstellationStarShader.fx 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\NamelessConstellationStarShader.fxc
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\NamelessLoreItemEyeShader.fx       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\NamelessLoreItemEyeShader.fxc      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\PrimordialStardustShader.fx        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\PrimordialStardustShader.fxc       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\PurifyingMatterShader.fx           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\PurifyingMatterShader.fxc          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\RadialGodRayShader.fx              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\RadialGodRayShader.fxc             
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\SunShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\SunShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\SupernovaShader.fx                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\Objects\NamelessDeity\SupernovaShader.fxc                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\AntiseedBackglowShader.fx               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\AntiseedBackglowShader.fxc              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\AvatarPlayerDeathAnimationShader.fx     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\AvatarPlayerDeathAnimationShader.fxc    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\BlackOnlyShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\BlackOnlyShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\BookOfShadersBackgroundShader.fx        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\BookOfShadersBackgroundShader.fxc       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\CuriousHandGeneralOverlayShader.fx      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\CuriousHandGeneralOverlayShader.fxc     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\CuriousHandShader.fx                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\CuriousHandShader.fxc                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\DissolveShader.fx                       
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\DissolveShader.fxc                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\FireParticleDissolveShader.fx           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\FireParticleDissolveShader.fxc          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GaussianBlurShader.fx                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GaussianBlurShader.fxc                  
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GenesisComponentRarityShader.fx         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GenesisComponentRarityShader.fxc        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GenesisLeafShader.fx                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GenesisLeafShader.fxc                   
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GrayscaleShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\GrayscaleShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\HandwrittenNoteBackgroundShader.fx      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\HandwrittenNoteBackgroundShader.fxc     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\HorizontalBlurShader.fx                 
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\HorizontalBlurShader.fxc                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\HorizontalGradientFade.fx               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\HorizontalGradientFade.fxc              
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\LightMaskShader.fx                      
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\LightMaskShader.fxc                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\LightMaterializationShader.fx           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\LightMaterializationShader.fxc          
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\LotusOfCreationShader.fx                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\LotusOfCreationShader.fxc               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\MainMenuScreenShakeShader.fx            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\MainMenuScreenShakeShader.fxc           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\MiracleblightImitationShader.fx         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\MiracleblightImitationShader.fxc        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\PixelationShader.fx                     
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\PixelationShader.fxc                    
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\PlayerInvincibilityShader.fx            
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\PlayerInvincibilityShader.fxc           
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\PortraitOverlayShader.fx                
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\PortraitOverlayShader.fxc               
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\ProtectiveMagicOverlayShader.fx         
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\ProtectiveMagicOverlayShader.fxc        
+C:\Users\Lolme\OneDrive\Документы\My Games\Terraria\tModLoader\ModSources\NoxusBoss\Assets\AutoloadedEffects\Shaders\OverlayModifiers\RiftEclipseBloodWaterShader.fx          
+
+
+
+
+== Code text matches ==
