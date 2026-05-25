@@ -4,6 +4,9 @@ publish/
 publish_portable/
 publish_single/
 decompiled_final/
+nilk_hour_test/
+nilk_hour_test_30s_*/
+terraria_current_screen.png
 *.pdb
 *.runtimeconfig.json
 *.deps.json

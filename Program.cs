@@ -41,6 +41,8 @@ public sealed class OverlayForm : Form
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_NOREPEAT = 0x4000;
+    private const float NilkCycleSeconds = 3600f;
+    private const float NilkDatamoshIntensity = 0.51f;
 
     private const int HotkeyIntensityUp = 101;
     private const int HotkeyIntensityDown = 102;
@@ -95,6 +97,9 @@ public sealed class OverlayForm : Form
     private Graphics? tripGraphics;
     private Bitmap? previousTripBitmap;
     private Graphics? previousTripGraphics;
+    private byte[]? tripPixelBuffer;
+    private byte[]? previousTripPixelBuffer;
+    private byte[]? noisePixels;
     private nint memoryDc;
     private nint dibBitmap;
     private nint oldBitmap;
@@ -103,6 +108,9 @@ public sealed class OverlayForm : Form
     private int surfaceHeight;
     private int tripWidth;
     private int tripHeight;
+    private int noiseWidth;
+    private int noiseHeight;
+    private int noiseStride;
 
     private EffectMode mode = EffectMode.FullTrip;
     private float time;
@@ -133,8 +141,10 @@ public sealed class OverlayForm : Form
         psychedelicTexture = LoadAsset(root, "Assets", "Textures", "Extra", "Psychedelic.png");
         voidTexture = LoadAsset(root, "Assets", "Textures", "Extra", "Void.png");
 
-        // 50 ms = 20 FPS. A transparent fullscreen layered window is expensive over games.
-        timer = new System.Windows.Forms.Timer { Interval = 50 };
+        CacheNoiseTexture();
+
+        // 33 ms keeps the transparent layered window close to 30 FPS without choking Terraria.
+        timer = new System.Windows.Forms.Timer { Interval = 33 };
         timer.Tick += (_, _) => RenderTick();
     }
 
@@ -337,7 +347,6 @@ public sealed class OverlayForm : Form
         int lowH = Math.Max(180, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
         EnsureTripSurface(lowW, lowH);
 
-        Graphics g = tripGraphics!;
         RenderNilkShaderPixels(lowW, lowH, p);
 
         InterpolationMode oldInterpolation = target.InterpolationMode;
@@ -347,14 +356,13 @@ public sealed class OverlayForm : Form
         target.DrawImage(tripBitmap!, new Rectangle(0, 0, w, h), 0, 0, lowW, lowH, GraphicsUnit.Pixel);
         target.InterpolationMode = oldInterpolation;
         target.PixelOffsetMode = oldPixelOffset;
-        previousTripGraphics!.CompositingMode = CompositingMode.SourceCopy;
-        previousTripGraphics.DrawImage(tripBitmap!, 0, 0, lowW, lowH);
-        previousTripGraphics.CompositingMode = CompositingMode.SourceOver;
     }
 
     private void EnsureTripSurface(int width, int height)
     {
-        if (tripBitmap is not null && tripGraphics is not null && previousTripBitmap is not null && previousTripGraphics is not null && tripWidth == width && tripHeight == height)
+        int requiredBytes = width * height * 4;
+        if (tripBitmap is not null && tripGraphics is not null && tripWidth == width && tripHeight == height &&
+            tripPixelBuffer?.Length == requiredBytes && previousTripPixelBuffer?.Length == requiredBytes)
             return;
 
         tripGraphics?.Dispose();
@@ -370,6 +378,8 @@ public sealed class OverlayForm : Form
         previousTripBitmap = new Bitmap(width, height, PixelFormat.Format32bppPArgb);
         previousTripGraphics = Graphics.FromImage(previousTripBitmap);
         ConfigureGraphics(previousTripGraphics);
+        tripPixelBuffer = new byte[requiredBytes];
+        previousTripPixelBuffer = new byte[requiredBytes];
     }
 
     private void DrawNilkShaderApproximation(Graphics g, int w, int h, float p)
@@ -384,76 +394,125 @@ public sealed class OverlayForm : Form
 
     private void RenderNilkShaderPixels(int w, int h, float p)
     {
-        if (tripBitmap is null)
+        if (tripBitmap is null || tripPixelBuffer is null || previousTripPixelBuffer is null)
             return;
 
-        BitmapData? previousData = null;
         BitmapData targetData = tripBitmap.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
         try
         {
-            if (previousTripBitmap is not null)
-                previousData = previousTripBitmap.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-
             int targetBytes = Math.Abs(targetData.Stride) * h;
-            byte[] target = new byte[targetBytes];
-            byte[]? previous = null;
-            if (previousData is not null)
-            {
-                previous = new byte[Math.Abs(previousData.Stride) * h];
-                Marshal.Copy(previousData.Scan0, previous, 0, previous.Length);
-            }
+            if (tripPixelBuffer.Length != targetBytes || previousTripPixelBuffer.Length != targetBytes)
+                return;
 
+            byte[] target = tripPixelBuffer;
+            byte[] previous = previousTripPixelBuffer;
+            int stride = targetData.Stride;
             float opacity = Math.Clamp(p, 0f, 1f);
             float smoothOpacity = opacity * opacity * (3f - opacity * 2f);
             float effective = Math.Clamp(opacity * smoothOpacity, 0f, 1f);
+            float overlayPower = Math.Clamp(opacity * 1.18f, 0f, 1f);
             float offsetTime = time * 0.7f;
+            float progress = Frac(time / NilkCycleSeconds);
+            float minute = progress * 60f;
+            float cyanPhase = Saturate(
+                Bell(minute, 8.7f, 2.35f) +
+                Bell(minute, 15.4f, 2.85f) * 0.95f +
+                Bell(minute, 56.8f, 2.80f) * 0.90f);
+            float palePhase = Saturate(
+                Bell(minute, 16.4f, 2.20f) * 0.70f +
+                Bell(minute, 57.6f, 1.70f) * 0.55f);
+            float voidPhase = Saturate(TimeWindow(minute, 20.0f, 43.5f, 3.2f));
+            float redPhase = Saturate(
+                BellWrapped(minute, 59.25f, 60f, 1.85f) +
+                TimeWindow(minute, 58.2f, 60.0f, 1.0f) * 0.55f);
+
+            float centerX = 0.5f + MathF.Sin(time * 0.031f) * 0.045f * overlayPower;
+            float centerY = 0.5f + MathF.Cos(time * 0.027f) * 0.040f * overlayPower;
+            float invW = 1f / Math.Max(w - 1, 1);
+            float invH = 1f / Math.Max(h - 1, 1);
+            byte[]? noise = noisePixels;
+            int nw = noiseWidth;
+            int nh = noiseHeight;
+            int ns = noiseStride;
 
             for (int y = 0; y < h; y++)
             {
-                float v = y / (float)Math.Max(h - 1, 1);
-                int row = y * targetData.Stride;
+                float v = y * invH;
+                int row = stride > 0 ? y * stride : (h - 1 - y) * -stride;
                 for (int x = 0; x < w; x++)
                 {
-                    float u = x / (float)Math.Max(w - 1, 1);
+                    float u = x * invW;
 
                     float du = u + MathF.Cos(offsetTime + v * MathF.Tau) * effective * 0.05f;
                     float dv = v + MathF.Cos(offsetTime + du * MathF.Tau) * effective * 0.05f;
                     dv += (MathF.Sin(du * 300f - dv * 32f + time * 20f) * 0.004f +
                            MathF.Sin(du * 20f + dv * 105f + time * 10f) * 0.003f) * effective;
 
-                    float cx = du - 0.5f;
-                    float cy = dv - 0.5f;
+                    float cx = du - centerX;
+                    float cy = dv - centerY;
                     float dist = MathF.Sqrt(cx * cx + cy * cy);
-                    float angle = MathF.Atan2(cy, cx) + time * (0.35f + 0.65f * effective) + (0.28f * effective / MathF.Max(0.10f, dist));
-                    float swirlU = 0.5f + MathF.Cos(angle) * dist;
-                    float swirlV = 0.5f + MathF.Sin(angle) * dist;
+                    float angle = MathF.Atan2(cy, cx);
+                    float vortex = overlayPower * (0.26f + cyanPhase * 0.16f + redPhase * 0.28f) / MathF.Max(0.075f, dist + 0.05f);
+                    angle += time * (0.18f + 0.34f * overlayPower) + vortex;
+                    angle += MathF.Sin(dist * 18f - time * 1.35f) * 0.10f * overlayPower;
+                    float stretch = 1f + MathF.Sin(angle * 2.0f + time * 0.42f) * 0.065f * overlayPower;
+                    float swirlU = centerX + MathF.Cos(angle) * dist * stretch;
+                    float swirlV = centerY + MathF.Sin(angle) * dist / MathF.Max(0.62f, stretch);
 
-                    float n1 = ValueNoise(swirlU * 9.5f + time * 0.21f, swirlV * 7.0f - time * 0.17f);
-                    float n2 = ValueNoise(swirlU * 21f - time * 0.47f + n1, swirlV * 17f + time * 0.33f);
-                    float n3 = ValueNoise(swirlU * 54f + n2 * 2.4f, swirlV * 46f - time * 0.80f);
-                    float luminosity = Math.Clamp(n1 * 0.48f + n2 * 0.34f + n3 * 0.18f, 0f, 1f);
+                    float tex1 = SampleNoise(noise, nw, nh, ns, swirlU * 0.82f + time * 0.006f, swirlV * 0.82f - time * 0.004f);
+                    float tex2 = SampleNoise(noise, nw, nh, ns, swirlU * 1.72f - time * 0.010f + tex1 * 0.15f, swirlV * 1.45f + time * 0.008f);
+                    float n1 = ValueNoise(swirlU * 3.3f + tex1 * 1.7f + time * 0.045f, swirlV * 2.7f - time * 0.035f);
+                    float n2 = ValueNoise(swirlU * 9.2f - time * 0.115f + n1 * 2.2f, swirlV * 7.1f + time * 0.092f + tex2);
+                    float n3 = ValueNoise(swirlU * 22.0f + n2 * 3.1f + time * 0.19f, swirlV * 18.0f - time * 0.16f);
+                    float liquidWave = MathF.Sin((swirlU * 1.55f + swirlV * 0.95f + n2 * 1.85f) * MathF.Tau + time * 0.31f);
+                    float angularWave = MathF.Sin(angle * 2.7f + dist * 24f - time * 0.62f);
+                    float luminosity = Math.Clamp(tex1 * 0.25f + tex2 * 0.19f + n1 * 0.24f + n2 * 0.22f + n3 * 0.10f +
+                                                  liquidWave * 0.085f + angularWave * 0.055f, 0f, 1f);
 
                     float paletteT = MathF.Sin(luminosity * MathF.Tau - time * 1.5f) * 0.5f + 0.5f;
-                    Color evil = PaletteColor(paletteT);
+                    Color evil = PaletteColor(paletteT + cyanPhase * 0.045f - redPhase * 0.11f);
+                    float contour = 1f - SmoothStep(0.015f, 0.115f, MathF.Abs(luminosity - (0.50f + 0.08f * MathF.Sin(time * 0.22f + tex2))));
+                    Color voidColor = LerpColor(Color.FromArgb(7, 5, 21), Color.FromArgb(39, 20, 62), SmoothStep(0.18f, 0.90f, luminosity));
+                    Color cyanColor = LerpColor(Color.FromArgb(123, 210, 223), Color.FromArgb(250, 152, 226), SmoothStep(0.18f, 0.82f, luminosity + tex2 * 0.12f));
+                    cyanColor = LerpColor(cyanColor, Color.FromArgb(236, 248, 255), (palePhase * 0.52f + SmoothStep(0.78f, 0.98f, luminosity) * 0.24f) * cyanPhase);
+                    Color redBase = LerpColor(Color.FromArgb(4, 0, 0), Color.FromArgb(175, 77, 8), SmoothStep(0.18f, 0.64f, luminosity));
+                    Color toxic = LerpColor(Color.FromArgb(236, 0, 211), Color.FromArgb(17, 238, 45), SmoothStep(0.36f, 0.78f, n3 + tex2 * 0.18f));
+                    Color redColor = LerpColor(redBase, toxic, Math.Clamp(contour * 0.86f + SmoothStep(0.74f, 0.96f, luminosity) * 0.45f, 0f, 1f));
 
-                    float vignette = Math.Clamp(1f - dist * 1.20f, 0f, 1f);
-                    float alphaF = Math.Clamp((0.07f + 0.28f * effective) * vignette, 0f, 0.42f);
-                    float datamoshNoise = ValueNoise(u * 1.4f + n2, v * 0.9f + n1);
-                    float datamosh = SmoothStep(1f - 0.51f, 1f, datamoshNoise * 0.5f) * MathF.Pow(effective, 2.5f);
+                    evil = LerpColor(evil, voidColor, voidPhase * 0.48f);
+                    evil = LerpColor(evil, cyanColor, cyanPhase);
+                    evil = LerpColor(evil, LerpColor(cyanColor, Color.White, 0.28f), palePhase * 0.50f);
+                    evil = LerpColor(evil, redColor, redPhase);
+                    evil = LerpColor(evil, Color.Black, Math.Clamp(dist * (0.28f + redPhase * 0.26f + voidPhase * 0.10f), 0f, 0.42f));
 
                     int index = row + x * 4;
-                    if (previous is not null && datamosh > 0.001f)
+                    int sx = Math.Clamp((int)((du + (n2 - 0.5f) * 0.052f * overlayPower + MathF.Cos(angle) * redPhase * 0.018f) * (w - 1)), 0, w - 1);
+                    int sy = Math.Clamp((int)((dv + (n1 - 0.5f) * 0.044f * overlayPower + MathF.Sin(angle) * cyanPhase * 0.014f) * (h - 1)), 0, h - 1);
+                    int previousIndex = (stride > 0 ? sy * stride : (h - 1 - sy) * -stride) + sx * 4;
+                    float previousAlpha = previous[previousIndex + 3] / 255f;
+                    float previousR = previousAlpha > 0.001f ? Math.Clamp(previous[previousIndex + 2] / previousAlpha, 0f, 255f) : previous[previousIndex + 2];
+                    float previousG = previousAlpha > 0.001f ? Math.Clamp(previous[previousIndex + 1] / previousAlpha, 0f, 255f) : previous[previousIndex + 1];
+                    float previousB = previousAlpha > 0.001f ? Math.Clamp(previous[previousIndex + 0] / previousAlpha, 0f, 255f) : previous[previousIndex + 0];
+                    float blendNoise = SampleNoise(noise, nw, nh, ns, u * 1.4f + previousR * 0.0039f, v * 0.9f + previousB * 0.0039f) +
+                                       SampleNoise(noise, nw, nh, ns, u * 0.9f + previousB * 0.0039f, v * 1.4f + previousG * 0.0039f);
+                    float datamosh = SmoothStep(1f - NilkDatamoshIntensity, 1f, blendNoise * 0.5f) *
+                                     MathF.Pow(overlayPower, 2.1f) *
+                                     (0.55f + cyanPhase * 0.24f + voidPhase * 0.18f + redPhase * 0.45f);
+
+                    if (datamosh > 0.001f)
                     {
-                        int sx = Math.Clamp((int)((u + (n2 - 0.5f) * 0.045f * effective) * (w - 1)), 0, w - 1);
-                        int sy = Math.Clamp((int)((v + (n1 - 0.5f) * 0.035f * effective) * (h - 1)), 0, h - 1);
-                        int previousIndex = sy * previousData!.Stride + sx * 4;
-                        evil = Color.FromArgb(
-                            255,
-                            (int)Lerp(evil.R, previous[previousIndex + 2], datamosh),
-                            (int)Lerp(evil.G, previous[previousIndex + 1], datamosh),
-                            (int)Lerp(evil.B, previous[previousIndex], datamosh));
-                        alphaF = Math.Clamp(alphaF + datamosh * 0.09f, 0f, 0.46f);
+                        evil = Color.FromArgb(255,
+                            (int)Lerp(evil.R, previousR, datamosh),
+                            (int)Lerp(evil.G, previousG, datamosh),
+                            (int)Lerp(evil.B, previousB, datamosh));
                     }
+
+                    float vignette = Math.Clamp(0.70f + (1f - dist * 0.95f) * 0.30f, 0.48f, 1f);
+                    float blotch = 0.62f + 0.38f * SmoothStep(0.22f, 0.86f, luminosity + tex2 * 0.10f);
+                    float phaseAlpha = 1f + cyanPhase * 0.42f + palePhase * 0.20f + voidPhase * 0.18f + redPhase * 0.48f;
+                    float alphaF = ((0.050f + 0.385f * overlayPower) * phaseAlpha * blotch + contour * 0.105f * overlayPower) * vignette;
+                    alphaF += datamosh * 0.070f + palePhase * 0.055f * overlayPower;
+                    alphaF = Math.Clamp(alphaF, 0f, 0.78f);
 
                     target[index + 0] = (byte)(evil.B * alphaF);
                     target[index + 1] = (byte)(evil.G * alphaF);
@@ -463,11 +522,10 @@ public sealed class OverlayForm : Form
             }
 
             Marshal.Copy(target, 0, targetData.Scan0, target.Length);
+            Buffer.BlockCopy(target, 0, previous, 0, targetBytes);
         }
         finally
         {
-            if (previousData is not null && previousTripBitmap is not null)
-                previousTripBitmap.UnlockBits(previousData);
             tripBitmap.UnlockBits(targetData);
         }
     }
@@ -1093,6 +1151,51 @@ public sealed class OverlayForm : Form
             (int)Lerp(nilkPalette[a].B, nilkPalette[b].B, f));
     }
 
+    private static Color LerpColor(Color a, Color b, float t)
+    {
+        t = Saturate(t);
+        return Color.FromArgb(
+            255,
+            (int)Lerp(a.R, b.R, t),
+            (int)Lerp(a.G, b.G, t),
+            (int)Lerp(a.B, b.B, t));
+    }
+
+    private static float Saturate(float value) => Math.Clamp(value, 0f, 1f);
+
+    private static float Bell(float value, float center, float width)
+    {
+        float x = (value - center) / Math.Max(width, 0.001f);
+        return MathF.Exp(-x * x);
+    }
+
+    private static float BellWrapped(float value, float center, float period, float width)
+    {
+        float d = MathF.Abs(value - center);
+        d = MathF.Min(d, period - d);
+        return MathF.Exp(-(d * d) / Math.Max(width * width, 0.001f));
+    }
+
+    private static float TimeWindow(float value, float start, float end, float softness)
+    {
+        return SmoothStep(start - softness, start + softness, value) *
+               (1f - SmoothStep(end - softness, end + softness, value));
+    }
+
+    private static float SampleNoise(byte[]? pixels, int width, int height, int stride, float u, float v)
+    {
+        if (pixels is null || width <= 0 || height <= 0 || stride == 0)
+            return ValueNoise(u * 8.0f, v * 8.0f);
+
+        u = Frac(u);
+        v = Frac(v);
+        int x = Math.Clamp((int)(u * width), 0, width - 1);
+        int y = Math.Clamp((int)(v * height), 0, height - 1);
+        int row = stride > 0 ? y * stride : (height - 1 - y) * -stride;
+        int index = row + x * 4;
+        return (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 765f;
+    }
+
     private static string MakeGlyphRun(int seed, int length)
     {
         StringBuilder builder = new(length);
@@ -1186,6 +1289,8 @@ public sealed class OverlayForm : Form
         previousTripGraphics = null;
         previousTripBitmap?.Dispose();
         previousTripBitmap = null;
+        tripPixelBuffer = null;
+        previousTripPixelBuffer = null;
         tripWidth = 0;
         tripHeight = 0;
 
@@ -1276,6 +1381,46 @@ public sealed class OverlayForm : Form
         }
 
         return baseDir;
+    }
+
+    private void CacheNoiseTexture()
+    {
+        if (noiseTexture is null)
+            return;
+
+        try
+        {
+            using Bitmap normalized = new(noiseTexture.Width, noiseTexture.Height, PixelFormat.Format32bppPArgb);
+            using (Graphics g = Graphics.FromImage(normalized))
+            {
+                g.CompositingMode = CompositingMode.SourceCopy;
+                g.DrawImage(noiseTexture, 0, 0, normalized.Width, normalized.Height);
+            }
+
+            BitmapData data = normalized.LockBits(
+                new Rectangle(0, 0, normalized.Width, normalized.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format32bppPArgb);
+            try
+            {
+                noiseWidth = normalized.Width;
+                noiseHeight = normalized.Height;
+                noiseStride = data.Stride;
+                noisePixels = new byte[Math.Abs(data.Stride) * normalized.Height];
+                Marshal.Copy(data.Scan0, noisePixels, 0, noisePixels.Length);
+            }
+            finally
+            {
+                normalized.UnlockBits(data);
+            }
+        }
+        catch
+        {
+            noisePixels = null;
+            noiseWidth = 0;
+            noiseHeight = 0;
+            noiseStride = 0;
+        }
     }
 
     private static Bitmap? LoadAsset(string root, params string[] parts)
