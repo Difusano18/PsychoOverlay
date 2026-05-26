@@ -457,6 +457,10 @@ float crackle(vec2 p,float c,float w){
   float b=fbm(p*2.05+a*1.85);
   return ridge(b+a*.22,c,w);
 }
+vec2 rot(vec2 p,float a){
+  float c=cos(a), s=sin(a);
+  return mat2(c,-s,s,c)*p;
+}
 vec3 sat(vec3 c,float s){float l=dot(c,vec3(.299,.587,.114));return mix(vec3(l),c,s);}
 
 void main(){
@@ -486,6 +490,13 @@ void main(){
   float veinFine=crackle(q2*8.6+vec2(-time*.050,time*.035)+n3*1.4,.52,.070);
   float silverEdge=clamp(vein*veinFine*1.55 + ridge(plasma+marble*.20,.68,.070)*.42,0.0,1.0);
   float blueVein=ridge(marble+flow*.075+n3*.18,.48,.115)*smoothstep(.22,.90,abyss+n1*.25);
+  vec2 k=abs(fract(rot(q2*.92,time*.055)*3.0+vec2(n1*.24,n2*.18))-.5);
+  float kaleido=ridge(length(k),.235,.125)*smoothstep(.20,.95,n2+n3*.35);
+  float aurora=ridge(sin((q2.x*2.2+q2.y*5.8+n1*2.8)+time*.52)*.5+.5,.62,.24);
+  float cellular=crackle(q2*5.15+vec2(sin(time*.17),cos(time*.13))*1.2+n3*.55,.50,.105);
+  float ribbon=ridge(sin((q2.x*8.5-q2.y*3.2+n2*4.7)-time*.95)*.5+.5,.54,.16);
+  float amber=clamp(smoothstep(.48,.92,flow+n1*.38)*ridge(plasma,.36,.26),0.0,1.0);
+  float crimson=clamp(ridge(plasma+n2*.18,.80,.18)*smoothstep(.25,1.0,cross+n3*.50),0.0,1.0);
   float deepPulse=.72+.28*sin(time*.95+n1*5.0+marble*3.2);
   float violet=ridge(plasma,.58,.32);
   float magenta=ridge(plasma,.72,.22)*smoothstep(-.15,.95,flow);
@@ -502,6 +513,13 @@ void main(){
   col=mix(col,vec3(.18,.05,.54),violet*.62);
   col=mix(col,vec3(.66,.06,.95),magenta*.78);
   col=mix(col,vec3(.05,.78,.28),emerald*.58);
+  col=mix(col,vec3(.00,.86,1.00),aurora*.38);
+  col=mix(col,vec3(.14,.16,.95),kaleido*.42);
+  col=mix(col,vec3(.95,.82,.18),amber*.44);
+  col=mix(col,vec3(.96,.06,.12),crimson*.46);
+  col=mix(col,vec3(.56,.02,.96),cellular*.28*smoothstep(.25,1.0,violet+magenta));
+  col=mix(col,vec3(.02,.95,.55),cellular*.30*smoothstep(.20,1.0,emerald+blueVein));
+  col+=vec3(.10,.62,1.00)*ribbon*.26;
   col=mix(col,vec3(.78,.36,.08),smoothstep(.45,1.0,flow+n1*.45)*.28);
   col=mix(col,vec3(.82,.90,1.0),pale);
   col=mix(col,vec3(.63,.76,.94),silverEdge*.42);
@@ -511,11 +529,12 @@ void main(){
   col+=vec3(.20,.45,1.0)*sparks*blueVein*.35;
 
   float l=dot(col,vec3(.299,.587,.114));
-  col=sat(col,1.92+.35*magenta+.22*emerald+.20*blueVein);
+  col=sat(col,1.95+.35*magenta+.22*emerald+.20*blueVein+.18*kaleido+.14*aurora);
   col=(col-.075)*1.38+.075;
   col=pow(max(col,0.0),vec3(.82));
 
-  float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38,0.0,1.0);
+  float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
+                     aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
