@@ -3,6 +3,8 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 
 namespace PsychoOverlay;
 
@@ -97,6 +99,7 @@ public sealed class OverlayForm : Form
     private Graphics? tripGraphics;
     private Bitmap? previousTripBitmap;
     private Graphics? previousTripGraphics;
+    private WebView2? gpuView;
     private byte[]? tripPixelBuffer;
     private byte[]? previousTripPixelBuffer;
     private byte[]? noisePixels;
@@ -121,6 +124,7 @@ public sealed class OverlayForm : Form
     private float hintSeconds = 7f;
     private bool paused;
     private bool needsFrame = true;
+    private bool gpuRendererActive;
 
     public OverlayForm()
     {
@@ -167,9 +171,17 @@ public sealed class OverlayForm : Form
         RegisterOverlayHotkeys();
     }
 
-    protected override void OnShown(EventArgs e)
+    protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        if (await TryStartGpuRendererAsync())
+            return;
+
+        StartCpuRenderer();
+    }
+
+    private void StartCpuRenderer()
+    {
         CreateRenderSurface(Math.Max(1, Width), Math.Max(1, Height));
         timer.Start();
         RenderTick();
@@ -178,6 +190,8 @@ public sealed class OverlayForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         timer.Stop();
+        gpuView?.Dispose();
+        gpuView = null;
         UnregisterOverlayHotkeys();
         DisposeAssets();
         DisposeRenderSurface();
@@ -219,6 +233,7 @@ public sealed class OverlayForm : Form
     {
         hintSeconds = 2.6f;
         needsFrame = true;
+        PushGpuState();
     }
 
     private void UpdateTimerInterval()
@@ -341,9 +356,203 @@ public sealed class OverlayForm : Form
         DrawHint(g, w, h);
     }
 
+    private async Task<bool> TryStartGpuRendererAsync()
+    {
+        try
+        {
+            string userDataFolder = Path.Combine(Path.GetTempPath(), "PsychoOverlay_WebView2");
+            CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            gpuView = new WebView2
+            {
+                Dock = DockStyle.Fill,
+                DefaultBackgroundColor = Color.Transparent,
+                AllowExternalDrop = false
+            };
+
+            Controls.Add(gpuView);
+            gpuView.BringToFront();
+            await gpuView.EnsureCoreWebView2Async(environment);
+            gpuView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            gpuView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            gpuView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            gpuView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+            gpuView.NavigateToString(BuildGpuOverlayHtml());
+            gpuRendererActive = true;
+            PushGpuState();
+            return true;
+        }
+        catch
+        {
+            gpuRendererActive = false;
+            if (gpuView is not null)
+            {
+                Controls.Remove(gpuView);
+                gpuView.Dispose();
+                gpuView = null;
+            }
+
+            return false;
+        }
+    }
+
+    private void PushGpuState()
+    {
+        if (!gpuRendererActive || gpuView?.CoreWebView2 is null)
+            return;
+
+        string intensityValue = targetIntensity.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string pausedValue = paused ? "true" : "false";
+        _ = gpuView.CoreWebView2.ExecuteScriptAsync($"window.setOverlayState && window.setOverlayState({intensityValue}, {pausedValue});");
+    }
+
+    private static string BuildGpuOverlayHtml()
+    {
+        return """
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;}
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:transparent;}
+#hud{position:fixed;left:12px;bottom:10px;font:12px Segoe UI,Arial,sans-serif;color:rgba(218,252,255,.82);background:rgba(4,3,17,.34);padding:5px 8px;border-radius:7px;pointer-events:none;user-select:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><div id="hud">F5/F6 power | F7 pause | F12 exit | NILK GPU</div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const hud = document.getElementById('hud');
+  const gl = canvas.getContext('webgl', {alpha:true, premultipliedAlpha:false, antialias:false, depth:false, stencil:false, preserveDrawingBuffer:false, powerPreference:'high-performance'});
+  if (!gl) { hud.textContent = 'WebGL unavailable'; return; }
+
+  const vert = `
+attribute vec2 a;
+varying vec2 v;
+void main(){v=a*.5+.5;gl_Position=vec4(a,0.0,1.0);}
+`;
+  const frag = `
+precision highp float;
+uniform vec2 r;
+uniform float t;
+uniform float intensity;
+varying vec2 v;
+
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  vec2 u=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),u.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),u.x),u.y);
+}
+float fbm(vec2 p){
+  float a=.5, s=0.0;
+  mat2 m=mat2(1.62,1.17,-1.17,1.62);
+  for(int i=0;i<5;i++){s+=a*noise(p);p=m*p+vec2(.17,.31);a*=.52;}
+  return s;
+}
+float ridge(float x,float c,float w){return 1.0-smoothstep(0.0,w,abs(x-c));}
+vec3 sat(vec3 c,float s){float l=dot(c,vec3(.299,.587,.114));return mix(vec3(l),c,s);}
+
+void main(){
+  vec2 uv=gl_FragCoord.xy/r;
+  vec2 p=(uv-.5)*vec2(r.x/r.y,1.0);
+  float power=clamp(intensity*1.55,0.0,1.0);
+  float time=t*.72;
+
+  vec2 q=p;
+  q += vec2(fbm(p*1.15+vec2(time*.07,-time*.04)), fbm(p*1.10+vec2(-time*.05,time*.06)))*.72-.36;
+  q += vec2(sin(p.y*7.0+time*.9), cos(p.x*6.0-time*.7))*.035*power;
+
+  vec2 q2=q;
+  q2 += vec2(fbm(q*2.0+time*.10), fbm(q*2.2-time*.09))*.34-.17;
+  float n1=fbm(q2*2.15+vec2(time*.035,-time*.025));
+  float n2=fbm(q2*5.40+vec2(-time*.055,time*.045)+n1*1.7);
+  float n3=fbm(q2*12.0+vec2(time*.12,-time*.10)+n2*2.1);
+
+  float flow=sin((q2.y*8.0+q2.x*2.1+n1*3.5)-time*.82);
+  float cross=sin((q2.x*7.8-q2.y*4.7+n2*4.2)+time*.64);
+  float plasma=clamp(n1*.42+n2*.36+n3*.18+flow*.11+cross*.055,0.0,1.0);
+  float violet=ridge(plasma,.58,.32);
+  float magenta=ridge(plasma,.72,.22)*smoothstep(-.15,.95,flow);
+  float emerald=ridge(plasma,.42,.23)*smoothstep(-.75,.95,-flow+n2*.7);
+  float pale=ridge(plasma,.86,.11)*.45;
+  float sparks=smoothstep(.975,1.0,noise(q2*72.0+vec2(time*.9,-time*.7)));
+
+  vec3 base=vec3(.010,.008,.030);
+  vec3 col=base;
+  col=mix(col,vec3(.18,.05,.54),violet*.62);
+  col=mix(col,vec3(.66,.06,.95),magenta*.78);
+  col=mix(col,vec3(.05,.78,.28),emerald*.58);
+  col=mix(col,vec3(.78,.36,.08),smoothstep(.45,1.0,flow+n1*.45)*.28);
+  col=mix(col,vec3(.82,.90,1.0),pale);
+  col+=vec3(.95,.12,.88)*sparks*.70;
+  col+=vec3(.16,.95,.35)*sparks*smoothstep(.52,1.0,emerald+magenta)*.38;
+
+  float l=dot(col,vec3(.299,.587,.114));
+  col=sat(col,1.85+.35*magenta+.22*emerald);
+  col=(col-.08)*1.32+.08;
+  col=pow(max(col,0.0),vec3(.82));
+
+  float signal=clamp(violet*.38+magenta*.62+emerald*.42+pale*.32+sparks*.82,0.0,1.0);
+  float veil=smoothstep(.18,.95,plasma+n1*.22)*.12;
+  float vign=1.0-smoothstep(.58,1.20,length(p));
+  float alpha=(veil+signal*.58)*power*(.72+.28*vign);
+  alpha=clamp(alpha,0.0,.74);
+  gl_FragColor=vec4(col,alpha);
+}
+`;
+
+  function shader(type, src){
+    const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  const program=gl.createProgram();
+  gl.attachShader(program,shader(gl.VERTEX_SHADER,vert));
+  gl.attachShader(program,shader(gl.FRAGMENT_SHADER,frag));
+  gl.linkProgram(program);
+  if(!gl.getProgramParameter(program,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+  gl.useProgram(program);
+  const buffer=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const attr=gl.getAttribLocation(program,'a');
+  gl.enableVertexAttribArray(attr);
+  gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
+  const ur=gl.getUniformLocation(program,'r'), ut=gl.getUniformLocation(program,'t'), ui=gl.getUniformLocation(program,'intensity');
+
+  let targetIntensity=.52, shownIntensity=.52, paused=false, shaderTime=0, last=performance.now();
+  window.setOverlayState=(i,p)=>{targetIntensity=Math.max(0,Math.min(.9,Number(i)||0));paused=!!p;hud.textContent=`F5/F6 power | F7 pause | F12 exit | NILK GPU INT ${Math.round(targetIntensity*100)}%${paused?' PAUSED':''}`;};
+  function resize(){
+    const dpr=Math.min(devicePixelRatio||1,1.35);
+    const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
+    if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+  }
+  addEventListener('resize',resize,{passive:true});
+  function frame(now){
+    resize();
+    const dt=Math.min((now-last)*.001,.05); last=now;
+    if(!paused) shaderTime+=dt;
+    shownIntensity += (targetIntensity-shownIntensity)*(1.0-Math.pow(.001,dt));
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(ur,canvas.width,canvas.height);
+    gl.uniform1f(ut,shaderTime);
+    gl.uniform1f(ui,shownIntensity);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
+""";
+    }
+
     private void RenderFullTripLowRes(Graphics target, int w, int h, float p)
     {
-        int lowW = Math.Clamp(w / 3, 560, 860);
+        int lowW = Math.Clamp(w / 3, 640, 920);
         int lowH = Math.Max(315, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
         EnsureTripSurface(lowW, lowH);
 
@@ -351,8 +560,8 @@ public sealed class OverlayForm : Form
 
         InterpolationMode oldInterpolation = target.InterpolationMode;
         PixelOffsetMode oldPixelOffset = target.PixelOffsetMode;
-        target.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        target.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        target.InterpolationMode = InterpolationMode.Bilinear;
+        target.PixelOffsetMode = PixelOffsetMode.Half;
         target.DrawImage(tripBitmap!, new Rectangle(0, 0, w, h), 0, 0, lowW, lowH, GraphicsUnit.Pixel);
         target.InterpolationMode = oldInterpolation;
         target.PixelOffsetMode = oldPixelOffset;
@@ -512,6 +721,17 @@ public sealed class OverlayForm : Form
                     g = Lerp(g, 35f + molten * 64f, broadBand * 0.32f);
                     b = Lerp(b, 12f + violetBand * 172f + contour * 45f, broadBand * 0.38f);
 
+                    float violetCore = SmoothStep(0.42f, 0.86f, violetBand + texC * 0.34f + MathF.Max(flowBand, 0f) * 0.18f) *
+                                       (0.48f + redPhase * 0.42f + cyanPhase * 0.16f);
+                    float emeraldSheen = SmoothStep(0.46f, 0.90f, greenBand + texB * 0.36f + MathF.Max(-flowBand, 0f) * 0.16f) *
+                                         (0.34f + voidPhase * 0.22f + redPhase * 0.18f);
+                    r = Lerp(r, 92f + contour * 145f, violetCore * 0.46f);
+                    g = Lerp(g, 16f + contour * 28f, violetCore * 0.34f);
+                    b = Lerp(b, 205f + contour * 44f, violetCore * 0.58f);
+                    r = Lerp(r, 24f + contour * 72f, emeraldSheen * 0.38f);
+                    g = Lerp(g, 118f + contour * 118f, emeraldSheen * 0.62f);
+                    b = Lerp(b, 58f + contour * 92f, emeraldSheen * 0.36f);
+
                     float cellSeed = SampleNoise(noise, nw, nh, ns, swirlU * 5.2f + texA * 0.35f, swirlV * 4.1f - texB * 0.25f);
                     float cell = SmoothStep(0.58f, 0.76f, cellSeed + field * 0.26f);
                     float cellRim = (1f - SmoothStep(0.76f, 0.96f, cellSeed + field * 0.20f)) * cell * redPhase;
@@ -532,6 +752,15 @@ public sealed class OverlayForm : Form
                     r *= 1f - darken;
                     g *= 1f - darken;
                     b *= 1f - darken;
+
+                    float luma = r * 0.299f + g * 0.587f + b * 0.114f;
+                    float saturation = 1.58f + contour * 0.35f + violetCore * 0.18f + emeraldSheen * 0.12f;
+                    r = luma + (r - luma) * saturation;
+                    g = luma + (g - luma) * saturation;
+                    b = luma + (b - luma) * saturation;
+                    r = (r - 96f) * 1.20f + 96f;
+                    g = (g - 96f) * 1.20f + 96f;
+                    b = (b - 96f) * 1.20f + 96f;
 
                     int index = row + x * 4;
                     int sx = Math.Clamp((int)((u + (texB - 0.5f) * 0.072f * effective + sx0 * redPhase * 0.030f) * (w - 1)), 0, w - 1);
@@ -563,10 +792,11 @@ public sealed class OverlayForm : Form
                     float vignette = Math.Clamp(0.76f + (1f - dist * 0.80f) * 0.24f, 0.50f, 1f);
                     float blotch = 0.70f + 0.30f * SmoothStep(0.20f, 0.85f, field + texB * 0.08f);
                     float phaseAlpha = 1f + cyanPhase * 0.26f + voidPhase * 0.10f + redPhase * 0.32f;
-                    float alphaF = ((0.014f + 0.235f * overlayPower) * phaseAlpha * blotch + contour * 0.185f * overlayPower) * vignette;
+                    float colorSignal = Math.Clamp(violetCore * 0.70f + emeraldSheen * 0.45f + broadBand * 0.52f + contour * 0.46f, 0f, 1f);
+                    float alphaF = ((0.008f + 0.155f * overlayPower) * phaseAlpha * blotch + contour * 0.150f * overlayPower) * vignette;
                     alphaF += broadBand * 0.105f * overlayPower + datamosh * 0.018f + palePhase * 0.010f * overlayPower +
-                              fragment * 0.18f * overlayPower + (cellRim + greenCore) * 0.18f * overlayPower;
-                    alphaF = Math.Clamp(alphaF, 0f, 0.70f);
+                              fragment * 0.18f * overlayPower + (cellRim + greenCore) * 0.18f * overlayPower + colorSignal * 0.115f * overlayPower;
+                    alphaF = Math.Clamp(alphaF, 0f, 0.66f);
 
                     r = Math.Clamp(r, 0f, 255f);
                     g = Math.Clamp(g, 0f, 255f);
