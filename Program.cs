@@ -41,7 +41,7 @@ public sealed class OverlayForm : Form
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_NOREPEAT = 0x4000;
-    private const float NilkCycleSeconds = 3600f;
+    private const float NilkCycleSeconds = 96f;
     private const float NilkDatamoshIntensity = 0.51f;
 
     private const int HotkeyIntensityUp = 101;
@@ -115,8 +115,8 @@ public sealed class OverlayForm : Form
     private EffectMode mode = EffectMode.FullTrip;
     private float time;
     private float previousSeconds;
-    private float intensity = 0.28f;
-    private float targetIntensity = 0.28f;
+    private float intensity = 0.38f;
+    private float targetIntensity = 0.38f;
     private float surge;
     private float hintSeconds = 7f;
     private bool paused;
@@ -143,8 +143,8 @@ public sealed class OverlayForm : Form
 
         CacheNoiseTexture();
 
-        // 33 ms keeps the transparent layered window close to 30 FPS without choking Terraria.
-        timer = new System.Windows.Forms.Timer { Interval = 33 };
+        // The renderer is intentionally low-res; 16 ms lets Windows present as fast as it can.
+        timer = new System.Windows.Forms.Timer { Interval = 16 };
         timer.Tick += (_, _) => RenderTick();
     }
 
@@ -223,7 +223,7 @@ public sealed class OverlayForm : Form
 
     private void UpdateTimerInterval()
     {
-        timer.Interval = 33;
+        timer.Interval = 16;
     }
 
     private void RenderTick()
@@ -343,8 +343,8 @@ public sealed class OverlayForm : Form
 
     private void RenderFullTripLowRes(Graphics target, int w, int h, float p)
     {
-        int lowW = Math.Clamp(w / 4, 320, 480);
-        int lowH = Math.Max(180, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
+        int lowW = Math.Clamp(w / 6, 240, 360);
+        int lowH = Math.Max(135, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
         EnsureTripSurface(lowW, lowH);
 
         RenderNilkShaderPixels(lowW, lowH, p);
@@ -409,10 +409,9 @@ public sealed class OverlayForm : Form
             int stride = targetData.Stride;
             float opacity = Math.Clamp(p, 0f, 1f);
             float smoothOpacity = opacity * opacity * (3f - opacity * 2f);
-            float effective = Math.Clamp(opacity * smoothOpacity, 0f, 1f);
-            float overlayPower = Math.Clamp(opacity * 1.18f, 0f, 1f);
-            float offsetTime = time * 0.7f;
-            float progress = Frac(time / NilkCycleSeconds);
+            float effective = Math.Clamp(opacity * (0.35f + smoothOpacity * 0.95f), 0f, 1f);
+            float overlayPower = Math.Clamp(opacity * 1.45f, 0f, 1f);
+            float progress = Frac(0.155f + time / NilkCycleSeconds);
             float minute = progress * 60f;
             float cyanPhase = Saturate(
                 Bell(minute, 8.7f, 2.35f) +
@@ -426,10 +425,17 @@ public sealed class OverlayForm : Form
                 BellWrapped(minute, 59.25f, 60f, 1.85f) +
                 TimeWindow(minute, 58.2f, 60.0f, 1.0f) * 0.55f);
 
-            float centerX = 0.5f + MathF.Sin(time * 0.031f) * 0.045f * overlayPower;
-            float centerY = 0.5f + MathF.Cos(time * 0.027f) * 0.040f * overlayPower;
+            float centerX = 0.5f + MathF.Sin(time * 0.071f) * 0.050f * overlayPower;
+            float centerY = 0.5f + MathF.Cos(time * 0.061f) * 0.044f * overlayPower;
             float invW = 1f / Math.Max(w - 1, 1);
             float invH = 1f / Math.Max(h - 1, 1);
+            float aspect = h / (float)Math.Max(w, 1);
+            float baseAngle = time * (0.115f + overlayPower * 0.045f) + cyanPhase * 0.22f - redPhase * 0.16f;
+            float baseCos = MathF.Cos(baseAngle);
+            float baseSin = MathF.Sin(baseAngle);
+            float lowTime = time * 0.18f;
+            float midTime = time * 0.34f;
+            float fastTime = time * 0.58f;
             byte[]? noise = noisePixels;
             int nw = noiseWidth;
             int nh = noiseHeight;
@@ -443,80 +449,102 @@ public sealed class OverlayForm : Form
                 {
                     float u = x * invW;
 
-                    float du = u + MathF.Cos(offsetTime + v * MathF.Tau) * effective * 0.05f;
-                    float dv = v + MathF.Cos(offsetTime + du * MathF.Tau) * effective * 0.05f;
-                    dv += (MathF.Sin(du * 300f - dv * 32f + time * 20f) * 0.004f +
-                           MathF.Sin(du * 20f + dv * 105f + time * 10f) * 0.003f) * effective;
+                    float px = u - centerX;
+                    float py = (v - centerY) * aspect;
+                    float dist = MathF.Sqrt(px * px + py * py);
+                    float twist = (0.32f + cyanPhase * 0.18f + redPhase * 0.30f) * effective / MathF.Max(0.095f, dist + 0.055f);
+                    twist += MathF.Sin(dist * 13.5f - fastTime) * 0.105f * effective;
+                    float twistCos = MathF.Cos(twist);
+                    float twistSin = MathF.Sin(twist);
+                    float rx = px * twistCos - py * twistSin;
+                    float ry = px * twistSin + py * twistCos;
+                    float sx0 = rx * baseCos - ry * baseSin;
+                    float sy0 = rx * baseSin + ry * baseCos;
 
-                    float cx = du - centerX;
-                    float cy = dv - centerY;
-                    float dist = MathF.Sqrt(cx * cx + cy * cy);
-                    float angle = MathF.Atan2(cy, cx);
-                    float vortex = overlayPower * (0.26f + cyanPhase * 0.16f + redPhase * 0.28f) / MathF.Max(0.075f, dist + 0.05f);
-                    angle += time * (0.18f + 0.34f * overlayPower) + vortex;
-                    angle += MathF.Sin(dist * 18f - time * 1.35f) * 0.10f * overlayPower;
-                    float stretch = 1f + MathF.Sin(angle * 2.0f + time * 0.42f) * 0.065f * overlayPower;
-                    float swirlU = centerX + MathF.Cos(angle) * dist * stretch;
-                    float swirlV = centerY + MathF.Sin(angle) * dist / MathF.Max(0.62f, stretch);
+                    float ribbon = MathF.Sin((sx0 * 2.2f + sy0 * 1.35f) * MathF.Tau + lowTime) * 0.046f * effective;
+                    ribbon += MathF.Sin((sx0 * 5.0f - sy0 * 3.4f) * MathF.Tau - midTime) * 0.020f * effective;
+                    float swirlU = 0.5f + sx0 + ribbon + MathF.Sin(sy0 * 9.5f + lowTime) * 0.018f * effective;
+                    float swirlV = 0.5f + sy0 / Math.Max(aspect, 0.35f) - ribbon + MathF.Cos(sx0 * 8.5f - midTime) * 0.018f * effective;
 
-                    float tex1 = SampleNoise(noise, nw, nh, ns, swirlU * 0.82f + time * 0.006f, swirlV * 0.82f - time * 0.004f);
-                    float tex2 = SampleNoise(noise, nw, nh, ns, swirlU * 1.72f - time * 0.010f + tex1 * 0.15f, swirlV * 1.45f + time * 0.008f);
-                    float n1 = ValueNoise(swirlU * 3.3f + tex1 * 1.7f + time * 0.045f, swirlV * 2.7f - time * 0.035f);
-                    float n2 = ValueNoise(swirlU * 9.2f - time * 0.115f + n1 * 2.2f, swirlV * 7.1f + time * 0.092f + tex2);
-                    float n3 = ValueNoise(swirlU * 22.0f + n2 * 3.1f + time * 0.19f, swirlV * 18.0f - time * 0.16f);
-                    float liquidWave = MathF.Sin((swirlU * 1.55f + swirlV * 0.95f + n2 * 1.85f) * MathF.Tau + time * 0.31f);
-                    float angularWave = MathF.Sin(angle * 2.7f + dist * 24f - time * 0.62f);
-                    float luminosity = Math.Clamp(tex1 * 0.25f + tex2 * 0.19f + n1 * 0.24f + n2 * 0.22f + n3 * 0.10f +
-                                                  liquidWave * 0.085f + angularWave * 0.055f, 0f, 1f);
+                    float texA = SampleNoise(noise, nw, nh, ns, swirlU * 0.72f + time * 0.004f, swirlV * 0.72f - time * 0.003f);
+                    float texB = SampleNoise(noise, nw, nh, ns, swirlU * 1.46f - time * 0.008f + texA * 0.18f, swirlV * 1.25f + time * 0.006f);
+                    float texC = SampleNoise(noise, nw, nh, ns, swirlU * 3.25f + texB * 0.30f, swirlV * 2.75f - time * 0.015f);
+                    float wave = MathF.Sin((swirlU * 1.18f + swirlV * 0.92f + texB * 1.7f) * MathF.Tau + lowTime);
+                    float ripple = MathF.Sin(dist * 24f - time * 0.72f + texC * 3.1f);
+                    float field = Math.Clamp(texA * 0.44f + texB * 0.34f + texC * 0.16f + wave * 0.090f + ripple * 0.045f, 0f, 1f);
+                    float edgeCenter = 0.47f + MathF.Sin(time * 0.19f + texB * 2.0f) * 0.085f;
+                    float contour = 1f - SmoothStep(0.020f, 0.130f, MathF.Abs(field - edgeCenter));
 
-                    float paletteT = MathF.Sin(luminosity * MathF.Tau - time * 1.5f) * 0.5f + 0.5f;
-                    Color evil = PaletteColor(paletteT + cyanPhase * 0.045f - redPhase * 0.11f);
-                    float contour = 1f - SmoothStep(0.015f, 0.115f, MathF.Abs(luminosity - (0.50f + 0.08f * MathF.Sin(time * 0.22f + tex2))));
-                    Color voidColor = LerpColor(Color.FromArgb(7, 5, 21), Color.FromArgb(39, 20, 62), SmoothStep(0.18f, 0.90f, luminosity));
-                    Color cyanColor = LerpColor(Color.FromArgb(123, 210, 223), Color.FromArgb(250, 152, 226), SmoothStep(0.18f, 0.82f, luminosity + tex2 * 0.12f));
-                    cyanColor = LerpColor(cyanColor, Color.FromArgb(236, 248, 255), (palePhase * 0.52f + SmoothStep(0.78f, 0.98f, luminosity) * 0.24f) * cyanPhase);
-                    Color redBase = LerpColor(Color.FromArgb(4, 0, 0), Color.FromArgb(175, 77, 8), SmoothStep(0.18f, 0.64f, luminosity));
-                    Color toxic = LerpColor(Color.FromArgb(236, 0, 211), Color.FromArgb(17, 238, 45), SmoothStep(0.36f, 0.78f, n3 + tex2 * 0.18f));
-                    Color redColor = LerpColor(redBase, toxic, Math.Clamp(contour * 0.86f + SmoothStep(0.74f, 0.96f, luminosity) * 0.45f, 0f, 1f));
+                    float greenBand = SmoothStep(0.28f, 0.48f, field) * (1f - SmoothStep(0.62f, 0.86f, field));
+                    float violetBand = SmoothStep(0.46f, 0.69f, field);
+                    float deepBand = 1f - SmoothStep(0.20f, 0.50f, field);
+                    float hotBand = SmoothStep(0.72f, 0.96f, field);
 
-                    evil = LerpColor(evil, voidColor, voidPhase * 0.48f);
-                    evil = LerpColor(evil, cyanColor, cyanPhase);
-                    evil = LerpColor(evil, LerpColor(cyanColor, Color.White, 0.28f), palePhase * 0.50f);
-                    evil = LerpColor(evil, redColor, redPhase);
-                    evil = LerpColor(evil, Color.Black, Math.Clamp(dist * (0.28f + redPhase * 0.26f + voidPhase * 0.10f), 0f, 0.42f));
+                    float r = 12f + deepBand * 8f + greenBand * 18f + violetBand * 118f + hotBand * 50f + contour * 42f;
+                    float g = 15f + deepBand * 12f + greenBand * 112f + violetBand * 20f + hotBand * 34f + contour * 36f;
+                    float b = 31f + deepBand * 76f + greenBand * 46f + violetBand * 112f + hotBand * 54f + contour * 48f;
+
+                    float cyanMix = cyanPhase * (0.55f + field * 0.42f);
+                    r = Lerp(r, 115f + field * 120f, cyanMix);
+                    g = Lerp(g, 186f + field * 58f, cyanMix);
+                    b = Lerp(b, 202f + field * 50f, cyanMix);
+
+                    float paleMix = palePhase * (0.32f + SmoothStep(0.58f, 0.95f, field) * 0.55f);
+                    r = Lerp(r, 238f, paleMix);
+                    g = Lerp(g, 244f, paleMix);
+                    b = Lerp(b, 247f, paleMix);
+
+                    float redMix = redPhase * (0.68f + contour * 0.32f);
+                    float toxicMix = SmoothStep(0.34f, 0.80f, texC + contour * 0.22f);
+                    float rr = Lerp(8f + field * 155f, 236f, contour * 0.38f);
+                    float rg = Lerp(3f + field * 78f, 236f, toxicMix * contour);
+                    float rb = Lerp(0f + field * 18f, 210f, contour * 0.82f);
+                    r = Lerp(r, rr, redMix);
+                    g = Lerp(g, rg, redMix);
+                    b = Lerp(b, rb, redMix);
+
+                    float voidMix = voidPhase * (0.22f + deepBand * 0.22f);
+                    r = Lerp(r, 8f + violetBand * 30f, voidMix);
+                    g = Lerp(g, 6f + greenBand * 30f, voidMix);
+                    b = Lerp(b, 24f + violetBand * 44f, voidMix);
+
+                    float darken = Math.Clamp(dist * (0.26f + redPhase * 0.24f + voidPhase * 0.10f), 0f, 0.48f);
+                    r *= 1f - darken;
+                    g *= 1f - darken;
+                    b *= 1f - darken;
 
                     int index = row + x * 4;
-                    int sx = Math.Clamp((int)((du + (n2 - 0.5f) * 0.052f * overlayPower + MathF.Cos(angle) * redPhase * 0.018f) * (w - 1)), 0, w - 1);
-                    int sy = Math.Clamp((int)((dv + (n1 - 0.5f) * 0.044f * overlayPower + MathF.Sin(angle) * cyanPhase * 0.014f) * (h - 1)), 0, h - 1);
+                    int sx = Math.Clamp((int)((u + (texB - 0.5f) * 0.072f * effective + sx0 * redPhase * 0.030f) * (w - 1)), 0, w - 1);
+                    int sy = Math.Clamp((int)((v + (texA - 0.5f) * 0.056f * effective + sy0 * cyanPhase * 0.030f) * (h - 1)), 0, h - 1);
                     int previousIndex = (stride > 0 ? sy * stride : (h - 1 - sy) * -stride) + sx * 4;
-                    float previousAlpha = previous[previousIndex + 3] / 255f;
-                    float previousR = previousAlpha > 0.001f ? Math.Clamp(previous[previousIndex + 2] / previousAlpha, 0f, 255f) : previous[previousIndex + 2];
-                    float previousG = previousAlpha > 0.001f ? Math.Clamp(previous[previousIndex + 1] / previousAlpha, 0f, 255f) : previous[previousIndex + 1];
-                    float previousB = previousAlpha > 0.001f ? Math.Clamp(previous[previousIndex + 0] / previousAlpha, 0f, 255f) : previous[previousIndex + 0];
-                    float blendNoise = SampleNoise(noise, nw, nh, ns, u * 1.4f + previousR * 0.0039f, v * 0.9f + previousB * 0.0039f) +
-                                       SampleNoise(noise, nw, nh, ns, u * 0.9f + previousB * 0.0039f, v * 1.4f + previousG * 0.0039f);
+                    float previousR = Math.Min(previous[previousIndex + 2] * 2.1f, 255f);
+                    float previousG = Math.Min(previous[previousIndex + 1] * 2.1f, 255f);
+                    float previousB = Math.Min(previous[previousIndex + 0] * 2.1f, 255f);
+                    float blendNoise = SampleNoise(noise, nw, nh, ns, u * 1.4f + previousR * 0.0027f, v * 0.9f + previousB * 0.0027f);
                     float datamosh = SmoothStep(1f - NilkDatamoshIntensity, 1f, blendNoise * 0.5f) *
-                                     MathF.Pow(overlayPower, 2.1f) *
-                                     (0.55f + cyanPhase * 0.24f + voidPhase * 0.18f + redPhase * 0.45f);
+                                     MathF.Pow(overlayPower, 1.75f) *
+                                     (0.42f + cyanPhase * 0.18f + voidPhase * 0.20f + redPhase * 0.42f);
 
                     if (datamosh > 0.001f)
                     {
-                        evil = Color.FromArgb(255,
-                            (int)Lerp(evil.R, previousR, datamosh),
-                            (int)Lerp(evil.G, previousG, datamosh),
-                            (int)Lerp(evil.B, previousB, datamosh));
+                        r = Lerp(r, previousR, datamosh);
+                        g = Lerp(g, previousG, datamosh);
+                        b = Lerp(b, previousB, datamosh);
                     }
 
-                    float vignette = Math.Clamp(0.70f + (1f - dist * 0.95f) * 0.30f, 0.48f, 1f);
-                    float blotch = 0.62f + 0.38f * SmoothStep(0.22f, 0.86f, luminosity + tex2 * 0.10f);
+                    float vignette = Math.Clamp(0.76f + (1f - dist * 0.80f) * 0.24f, 0.50f, 1f);
+                    float blotch = 0.70f + 0.30f * SmoothStep(0.20f, 0.85f, field + texB * 0.08f);
                     float phaseAlpha = 1f + cyanPhase * 0.42f + palePhase * 0.20f + voidPhase * 0.18f + redPhase * 0.48f;
                     float alphaF = ((0.050f + 0.385f * overlayPower) * phaseAlpha * blotch + contour * 0.105f * overlayPower) * vignette;
                     alphaF += datamosh * 0.070f + palePhase * 0.055f * overlayPower;
-                    alphaF = Math.Clamp(alphaF, 0f, 0.78f);
+                    alphaF = Math.Clamp(alphaF, 0f, 0.74f);
 
-                    target[index + 0] = (byte)(evil.B * alphaF);
-                    target[index + 1] = (byte)(evil.G * alphaF);
-                    target[index + 2] = (byte)(evil.R * alphaF);
+                    r = Math.Clamp(r, 0f, 255f);
+                    g = Math.Clamp(g, 0f, 255f);
+                    b = Math.Clamp(b, 0f, 255f);
+                    target[index + 0] = (byte)(b * alphaF);
+                    target[index + 1] = (byte)(g * alphaF);
+                    target[index + 2] = (byte)(r * alphaF);
                     target[index + 3] = (byte)(alphaF * 255f);
                 }
             }
