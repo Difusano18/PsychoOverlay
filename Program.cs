@@ -462,6 +462,10 @@ vec2 rot(vec2 p,float a){
   return mat2(c,-s,s,c)*p;
 }
 vec3 sat(vec3 c,float s){float l=dot(c,vec3(.299,.587,.114));return mix(vec3(l),c,s);}
+vec3 spectrum(float x){
+  vec3 c=.5+.5*cos(6.2831853*(x+vec3(.00,.34,.67)));
+  return pow(c,vec3(.72));
+}
 
 void main(){
   vec2 uv=gl_FragCoord.xy/r;
@@ -472,6 +476,21 @@ void main(){
   vec2 q=p;
   q += vec2(fbm(p*1.15+vec2(time*.07,-time*.04)), fbm(p*1.10+vec2(-time*.05,time*.06)))*.72-.36;
   q += vec2(sin(p.y*7.0+time*.9), cos(p.x*6.0-time*.7))*.035*power;
+
+  vec2 h1=vec2(.52*sin(time*.17), .32*cos(time*.13));
+  vec2 h2=vec2(.62*sin(time*.11+2.1), .38*cos(time*.16+1.4));
+  vec2 h3=vec2(.40*sin(time*.21+4.2), .26*cos(time*.10+3.3));
+  vec2 d1=q-h1, d2=q-h2, d3=q-h3;
+  float r1=length(d1)+.001, r2=length(d2)+.001, r3=length(d3)+.001;
+  float l1=smoothstep(.45,.035,r1)*power;
+  float l2=smoothstep(.38,.030,r2)*power*.82;
+  float l3=smoothstep(.32,.026,r3)*power*.62;
+  q += vec2(-d1.y,d1.x)*l1*(.052/(r1+.040)) - d1*l1*(.060/(r1+.12));
+  q += vec2(-d2.y,d2.x)*l2*(.045/(r2+.045)) - d2*l2*(.048/(r2+.12));
+  q += vec2(-d3.y,d3.x)*l3*(.038/(r3+.050)) - d3*l3*(.040/(r3+.13));
+  float blackHole=max(max(smoothstep(.070,.018,r1)*l1, smoothstep(.060,.016,r2)*l2), smoothstep(.052,.014,r3)*l3);
+  float accretion=max(max(ridge(r1,.185,.050)*l1, ridge(r2,.155,.043)*l2), ridge(r3,.132,.038)*l3);
+  float outerLens=max(max(ridge(r1,.305,.120)*l1, ridge(r2,.255,.105)*l2), ridge(r3,.220,.090)*l3);
 
   vec2 q2=q;
   q2 += vec2(fbm(q*2.0+time*.10), fbm(q*2.2-time*.09))*.34-.17;
@@ -497,6 +516,8 @@ void main(){
   float ribbon=ridge(sin((q2.x*8.5-q2.y*3.2+n2*4.7)-time*.95)*.5+.5,.54,.16);
   float amber=clamp(smoothstep(.48,.92,flow+n1*.38)*ridge(plasma,.36,.26),0.0,1.0);
   float crimson=clamp(ridge(plasma+n2*.18,.80,.18)*smoothstep(.25,1.0,cross+n3*.50),0.0,1.0);
+  float rainbowField=ridge(sin((q2.x*4.8+q2.y*3.9+n1*3.8)+time*.70)*.5+.5,.50,.30);
+  float prism=ridge(plasma+n3*.28+sin(time*.31)*.08,.52,.24)*smoothstep(.18,1.0,abs(flow)+n2*.45);
   float deepPulse=.72+.28*sin(time*.95+n1*5.0+marble*3.2);
   float violet=ridge(plasma,.58,.32);
   float magenta=ridge(plasma,.72,.22)*smoothstep(-.15,.95,flow);
@@ -517,6 +538,8 @@ void main(){
   col=mix(col,vec3(.14,.16,.95),kaleido*.42);
   col=mix(col,vec3(.95,.82,.18),amber*.44);
   col=mix(col,vec3(.96,.06,.12),crimson*.46);
+  col=mix(col,spectrum(plasma+n1*.37+time*.055),rainbowField*.48);
+  col=mix(col,spectrum(n2+n3*.45-flow*.10+time*.075),prism*.38);
   col=mix(col,vec3(.56,.02,.96),cellular*.28*smoothstep(.25,1.0,violet+magenta));
   col=mix(col,vec3(.02,.95,.55),cellular*.30*smoothstep(.20,1.0,emerald+blueVein));
   col+=vec3(.10,.62,1.00)*ribbon*.26;
@@ -527,18 +550,22 @@ void main(){
   col+=vec3(.95,.12,.88)*sparks*.70;
   col+=vec3(.16,.95,.35)*sparks*smoothstep(.52,1.0,emerald+magenta)*.38;
   col+=vec3(.20,.45,1.0)*sparks*blueVein*.35;
+  col=mix(col,vec3(.0,.0,.006),blackHole*.88);
+  col+=spectrum(time*.11+atan(q.y,q.x)*.20+plasma*.45)*accretion*.92;
+  col+=vec3(.68,.86,1.0)*outerLens*.24;
 
   float l=dot(col,vec3(.299,.587,.114));
-  col=sat(col,1.95+.35*magenta+.22*emerald+.20*blueVein+.18*kaleido+.14*aurora);
+  col=sat(col,2.02+.35*magenta+.22*emerald+.20*blueVein+.18*kaleido+.14*aurora+.18*rainbowField+.15*prism);
   col=(col-.075)*1.38+.075;
   col=pow(max(col,0.0),vec3(.82));
 
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
-                     aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36,0.0,1.0);
+                     aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
+                     rainbowField*.42+prism*.34+accretion*.74+outerLens*.30,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
-  alpha=clamp(alpha,0.0,.78);
+  alpha=clamp(alpha*(1.0-blackHole*.35)+accretion*.22*power,0.0,.82);
   gl_FragColor=vec4(col,alpha);
 }
 `;
