@@ -419,7 +419,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:
 </style>
 </head>
 <body>
-<canvas id="c"></canvas><div id="hud">F5/F6 power | F7 pause | F12 exit | NILK GPU</div>
+<canvas id="c"></canvas><div id="hud">Ctrl+Alt+PgUp/PgDn power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | NILK GPU</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
@@ -480,17 +480,18 @@ void main(){
   vec2 h1=vec2(.52*sin(time*.17), .32*cos(time*.13));
   vec2 h2=vec2(.62*sin(time*.11+2.1), .38*cos(time*.16+1.4));
   vec2 h3=vec2(.40*sin(time*.21+4.2), .26*cos(time*.10+3.3));
-  vec2 hx=vec2(.18*sin(time*.075+1.1), .10*cos(time*.058+2.0));
+  vec2 hx=vec2(1.08*sin(time*.20+1.1), .34*sin(time*.13+2.0));
   vec2 dx=q-hx;
   float rx=length(dx)+.001;
   float bossBeat=pow(.5+.5*sin(time*.42),3.0);
-  float phase=fract(time*.115);
-  float noxusReach=smoothstep(.82,.025,rx)*power;
-  float noxusCore=smoothstep(.095,.018,rx)*noxusReach;
-  float noxusSwirl=(.082+.026*bossBeat)/(rx+.045)*noxusReach;
-  float noxusPull=(.075+.018*bossBeat)/(rx+.085)*noxusReach;
+  float waveA=.5+.5*sin(time*.31+1.7);
+  float waveB=.5+.5*sin(time*.47+4.1);
+  float noxusReach=smoothstep(1.05,.025,rx)*power;
+  float noxusCore=smoothstep(.125,.020,rx)*noxusReach;
+  float noxusSwirl=(.120+.030*bossBeat)/(rx+.045)*noxusReach;
+  float noxusPull=(.090+.024*bossBeat)/(rx+.080)*noxusReach;
   q += vec2(-dx.y,dx.x)*noxusSwirl - dx*noxusPull;
-  q += dx/rx*ridge(rx,.34+phase*.22,.085)*(.020+.025*bossBeat)*power;
+  q += dx/rx*(ridge(rx,.31+.12*waveA,.090)+ridge(rx,.56+.18*waveB,.120)*.62)*(.018+.025*bossBeat)*power;
   vec2 d1=q-h1, d2=q-h2, d3=q-h3;
   float r1=length(d1)+.001, r2=length(d2)+.001, r3=length(d3)+.001;
   float l1=smoothstep(.45,.035,r1)*power;
@@ -520,7 +521,8 @@ void main(){
   float veinFine=crackle(q2*8.6+vec2(-time*.050,time*.035)+n3*1.4,.52,.070);
   float silverEdge=clamp(vein*veinFine*1.55 + ridge(plasma+marble*.20,.68,.070)*.42,0.0,1.0);
   float blueVein=ridge(marble+flow*.075+n3*.18,.48,.115)*smoothstep(.22,.90,abyss+n1*.25);
-  vec2 k=abs(fract(rot(q2*.92,time*.055)*3.0+vec2(n1*.24,n2*.18))-.5);
+  vec2 kp=rot(q2*.92,time*.055)*3.0+vec2(n1*.24,n2*.18);
+  vec2 k=abs(vec2(sin(kp.x*6.2831853+time*.18),cos(kp.y*6.2831853-time*.16))*.5);
   float kaleido=ridge(length(k),.235,.125)*smoothstep(.20,.95,n2+n3*.35);
   float aurora=ridge(sin((q2.x*2.2+q2.y*5.8+n1*2.8)+time*.52)*.5+.5,.62,.24);
   float cellular=crackle(q2*5.15+vec2(sin(time*.17),cos(time*.13))*1.2+n3*.55,.50,.105);
@@ -541,10 +543,10 @@ void main(){
   float sa=atan(sx.y,sx.x);
   float diskNoise=noise(vec2(sa*1.35+time*.95, sr*7.0-time*.50))+
                   noise(vec2(sa*3.10-time*.55, sr*13.0+time*.20))*.5;
-  float noxusDisk=ridge(sr,.185+.024*sin(time*.75),.055)*(.35+.65*diskNoise)*smoothstep(.035,.11,sr)*smoothstep(.58,.10,sr)*noxusReach;
-  float noxusPhoton=ridge(sr,.098,.018)*(.65+.35*sin(sa*5.0-time*3.0))*noxusReach;
-  float noxusLens=ridge(sr,.310+.035*bossBeat,.090)*(.45+.55*noise(vec2(sa*2.0+time*.42,sr*5.0)))*noxusReach;
-  float noxusShock=ridge(sr,.22+phase*.62,.028)*(1.0-phase)*power;
+  float noxusDisk=ridge(sr,.215+.024*sin(time*.75),.075)*(.35+.65*diskNoise)*smoothstep(.038,.13,sr)*smoothstep(.72,.12,sr)*noxusReach;
+  float noxusPhoton=ridge(sr,.118,.026)*(.65+.35*sin(sa*5.0-time*3.0))*noxusReach;
+  float noxusLens=ridge(sr,.360+.055*bossBeat,.130)*(.45+.55*noise(vec2(sa*2.0+time*.42,sr*5.0)))*noxusReach;
+  float noxusShock=(ridge(sr,.24+.18*waveA,.036)*(1.0-waveA*.42)+ridge(sr,.55+.18*waveB,.052)*(1.0-waveB*.35))*.62*power;
   float noxusDust=smoothstep(.982,1.0,noise(vec2(sa*9.0-sr*18.0+time*1.6, sr*32.0-time*.8)))*
                   smoothstep(.65,.060,sr)*noxusReach;
   float noxusTidal=ridge(sin(sa*2.0+sr*18.0-time*2.2+n2*2.0)*.5+.5,.52,.26)*smoothstep(.50,.05,sr)*noxusReach;
@@ -563,6 +565,7 @@ void main(){
   col=mix(col,vec3(.96,.06,.12),crimson*.46);
   col=mix(col,spectrum(plasma+n1*.37+time*.055),rainbowField*.48);
   col=mix(col,spectrum(n2+n3*.45-flow*.10+time*.075),prism*.38);
+  col=mix(col,spectrum(marble*.31+n2*.42+time*.055),voidPool*.24*power);
   col=mix(col,vec3(.56,.02,.96),cellular*.28*smoothstep(.25,1.0,violet+magenta));
   col=mix(col,vec3(.02,.95,.55),cellular*.30*smoothstep(.20,1.0,emerald+blueVein));
   col+=vec3(.10,.62,1.00)*ribbon*.26;
@@ -580,7 +583,7 @@ void main(){
   col+=vec3(.85,.96,1.0)*noxusShock*.34;
   col+=vec3(.85,.16,1.0)*noxusDust*.85;
   col+=vec3(.12,.62,1.0)*noxusTidal*.40;
-  col=mix(col,vec3(.0,.0,.006),blackHole*.88);
+  col=mix(col,vec3(.0,.0,.003),blackHole*.86);
   col+=spectrum(time*.11+atan(q.y,q.x)*.20+plasma*.45)*accretion*.92;
   col+=vec3(.68,.86,1.0)*outerLens*.24;
 
@@ -596,8 +599,8 @@ void main(){
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
-  alpha=clamp(alpha*(1.0-blackHole*.35)+accretion*.22*power+
-              (noxusDisk*.20+noxusLens*.10+noxusPhoton*.14+noxusShock*.12+noxusDust*.20)*power,0.0,.85);
+  alpha=clamp(alpha+blackHole*.34*power+accretion*.22*power+
+              (noxusDisk*.28+noxusLens*.16+noxusPhoton*.20+noxusShock*.15+noxusDust*.22)*power,0.0,.88);
   gl_FragColor=vec4(col,alpha);
 }
 `;
@@ -622,7 +625,7 @@ void main(){
   const ur=gl.getUniformLocation(program,'r'), ut=gl.getUniformLocation(program,'t'), ui=gl.getUniformLocation(program,'intensity');
 
   let targetIntensity=.52, shownIntensity=.52, paused=false, shaderTime=0, last=performance.now();
-  window.setOverlayState=(i,p)=>{targetIntensity=Math.max(0,Math.min(.9,Number(i)||0));paused=!!p;hud.textContent=`F5/F6 power | F7 pause | F12 exit | NILK GPU INT ${Math.round(targetIntensity*100)}%${paused?' PAUSED':''}`;};
+  window.setOverlayState=(i,p)=>{targetIntensity=Math.max(0,Math.min(.9,Number(i)||0));paused=!!p;hud.textContent=`Ctrl+Alt+PgUp/PgDn power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | NILK GPU INT ${Math.round(targetIntensity*100)}%${paused?' PAUSED':''}`;};
   function resize(){
     const dpr=Math.min(devicePixelRatio||1,1.35);
     const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
@@ -631,7 +634,7 @@ void main(){
   addEventListener('resize',resize,{passive:true});
   function frame(now){
     resize();
-    const dt=Math.min((now-last)*.001,.05); last=now;
+    const dt=Math.min((now-last)*.001,.033); last=now;
     if(!paused) shaderTime+=dt;
     shownIntensity += (targetIntensity-shownIntensity)*(1.0-Math.pow(.001,dt));
     gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -1500,7 +1503,7 @@ void main(){
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? "PAUSED" : $"NILK | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = $"F5/F6 power | F7 pause | F12 exit | {state}";
+        string text = $"Ctrl+Alt+PgUp/PgDn power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -1704,18 +1707,11 @@ void main(){
     private void RegisterOverlayHotkeys()
     {
         uint mods = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
-        uint fmods = MOD_NOREPEAT;
 
-        // Old safe combos still work.
-        RegisterHotKey(Handle, HotkeyIntensityUp, mods, (uint)Keys.Up);
-        RegisterHotKey(Handle, HotkeyIntensityDown, mods, (uint)Keys.Down);
-        RegisterHotKey(Handle, HotkeyTogglePause, mods, (uint)Keys.Space);
-        RegisterHotKey(Handle, HotkeyExit, mods, (uint)Keys.Escape);
-        // Quick reliable keys, because click-through overlays do not receive normal keyboard focus.
-        RegisterHotKey(Handle, HotkeyIntensityDownF, fmods, (uint)Keys.F5);
-        RegisterHotKey(Handle, HotkeyIntensityUpF, fmods, (uint)Keys.F6);
-        RegisterHotKey(Handle, HotkeyTogglePauseF, fmods, (uint)Keys.F7);
-        RegisterHotKey(Handle, HotkeyExitF, fmods, (uint)Keys.F12);
+        RegisterHotKey(Handle, HotkeyIntensityUp, mods, (uint)Keys.PageUp);
+        RegisterHotKey(Handle, HotkeyIntensityDown, mods, (uint)Keys.PageDown);
+        RegisterHotKey(Handle, HotkeyTogglePause, mods, (uint)Keys.P);
+        RegisterHotKey(Handle, HotkeyExit, mods, (uint)Keys.Q);
     }
 
     private void UnregisterOverlayHotkeys()
