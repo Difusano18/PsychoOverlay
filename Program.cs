@@ -452,6 +452,11 @@ float fbm(vec2 p){
   return s;
 }
 float ridge(float x,float c,float w){return 1.0-smoothstep(0.0,w,abs(x-c));}
+float crackle(vec2 p,float c,float w){
+  float a=fbm(p);
+  float b=fbm(p*2.05+a*1.85);
+  return ridge(b+a*.22,c,w);
+}
 vec3 sat(vec3 c,float s){float l=dot(c,vec3(.299,.587,.114));return mix(vec3(l),c,s);}
 
 void main(){
@@ -466,6 +471,7 @@ void main(){
 
   vec2 q2=q;
   q2 += vec2(fbm(q*2.0+time*.10), fbm(q*2.2-time*.09))*.34-.17;
+  q2 += vec2(sin(q.y*15.0+time*1.1), cos(q.x*13.0-time*.9))*.018*power;
   float n1=fbm(q2*2.15+vec2(time*.035,-time*.025));
   float n2=fbm(q2*5.40+vec2(-time*.055,time*.045)+n1*1.7);
   float n3=fbm(q2*12.0+vec2(time*.12,-time*.10)+n2*2.1);
@@ -473,32 +479,47 @@ void main(){
   float flow=sin((q2.y*8.0+q2.x*2.1+n1*3.5)-time*.82);
   float cross=sin((q2.x*7.8-q2.y*4.7+n2*4.2)+time*.64);
   float plasma=clamp(n1*.42+n2*.36+n3*.18+flow*.11+cross*.055,0.0,1.0);
+  float marble=fbm(q2*1.55+vec2(-time*.025,time*.018)+n1*.85);
+  float abyss=smoothstep(.18,.86,marble+n2*.22);
+  float voidPool=1.0-smoothstep(.34,.74,marble+plasma*.18);
+  float vein=crackle(q2*3.2+vec2(time*.020,-time*.015)+n2*.7,.56,.135);
+  float veinFine=crackle(q2*8.6+vec2(-time*.050,time*.035)+n3*1.4,.52,.070);
+  float silverEdge=clamp(vein*veinFine*1.55 + ridge(plasma+marble*.20,.68,.070)*.42,0.0,1.0);
+  float blueVein=ridge(marble+flow*.075+n3*.18,.48,.115)*smoothstep(.22,.90,abyss+n1*.25);
+  float deepPulse=.72+.28*sin(time*.95+n1*5.0+marble*3.2);
   float violet=ridge(plasma,.58,.32);
   float magenta=ridge(plasma,.72,.22)*smoothstep(-.15,.95,flow);
   float emerald=ridge(plasma,.42,.23)*smoothstep(-.75,.95,-flow+n2*.7);
   float pale=ridge(plasma,.86,.11)*.45;
   float sparks=smoothstep(.975,1.0,noise(q2*72.0+vec2(time*.9,-time*.7)));
+  sparks += smoothstep(.985,1.0,noise(q2*128.0+vec2(-time*1.2,time*.8)))*blueVein*.55;
 
-  vec3 base=vec3(.010,.008,.030);
+  vec3 base=mix(vec3(.006,.008,.026),vec3(.010,.028,.070),abyss*.64);
   vec3 col=base;
+  col=mix(col,vec3(.012,.035,.120),blueVein*.52*deepPulse);
+  col=mix(col,vec3(.020,.085,.190),smoothstep(.25,.95,blueVein+n2*.35)*.36);
+  col=mix(col,vec3(.015,.010,.030),voidPool*.42);
   col=mix(col,vec3(.18,.05,.54),violet*.62);
   col=mix(col,vec3(.66,.06,.95),magenta*.78);
   col=mix(col,vec3(.05,.78,.28),emerald*.58);
   col=mix(col,vec3(.78,.36,.08),smoothstep(.45,1.0,flow+n1*.45)*.28);
   col=mix(col,vec3(.82,.90,1.0),pale);
+  col=mix(col,vec3(.63,.76,.94),silverEdge*.42);
+  col+=vec3(.06,.26,.72)*blueVein*.32;
   col+=vec3(.95,.12,.88)*sparks*.70;
   col+=vec3(.16,.95,.35)*sparks*smoothstep(.52,1.0,emerald+magenta)*.38;
+  col+=vec3(.20,.45,1.0)*sparks*blueVein*.35;
 
   float l=dot(col,vec3(.299,.587,.114));
-  col=sat(col,1.85+.35*magenta+.22*emerald);
-  col=(col-.08)*1.32+.08;
+  col=sat(col,1.92+.35*magenta+.22*emerald+.20*blueVein);
+  col=(col-.075)*1.38+.075;
   col=pow(max(col,0.0),vec3(.82));
 
-  float signal=clamp(violet*.38+magenta*.62+emerald*.42+pale*.32+sparks*.82,0.0,1.0);
-  float veil=smoothstep(.18,.95,plasma+n1*.22)*.12;
+  float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38,0.0,1.0);
+  float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
-  float alpha=(veil+signal*.58)*power*(.72+.28*vign);
-  alpha=clamp(alpha,0.0,.74);
+  float alpha=(veil+signal*.60)*power*(.70+.30*vign);
+  alpha=clamp(alpha,0.0,.78);
   gl_FragColor=vec4(col,alpha);
 }
 `;
