@@ -480,6 +480,17 @@ void main(){
   vec2 h1=vec2(.52*sin(time*.17), .32*cos(time*.13));
   vec2 h2=vec2(.62*sin(time*.11+2.1), .38*cos(time*.16+1.4));
   vec2 h3=vec2(.40*sin(time*.21+4.2), .26*cos(time*.10+3.3));
+  vec2 hx=vec2(.18*sin(time*.075+1.1), .10*cos(time*.058+2.0));
+  vec2 dx=q-hx;
+  float rx=length(dx)+.001;
+  float bossBeat=pow(.5+.5*sin(time*.42),3.0);
+  float phase=fract(time*.115);
+  float noxusReach=smoothstep(.82,.025,rx)*power;
+  float noxusCore=smoothstep(.095,.018,rx)*noxusReach;
+  float noxusSwirl=(.082+.026*bossBeat)/(rx+.045)*noxusReach;
+  float noxusPull=(.075+.018*bossBeat)/(rx+.085)*noxusReach;
+  q += vec2(-dx.y,dx.x)*noxusSwirl - dx*noxusPull;
+  q += dx/rx*ridge(rx,.34+phase*.22,.085)*(.020+.025*bossBeat)*power;
   vec2 d1=q-h1, d2=q-h2, d3=q-h3;
   float r1=length(d1)+.001, r2=length(d2)+.001, r3=length(d3)+.001;
   float l1=smoothstep(.45,.035,r1)*power;
@@ -488,7 +499,7 @@ void main(){
   q += vec2(-d1.y,d1.x)*l1*(.052/(r1+.040)) - d1*l1*(.060/(r1+.12));
   q += vec2(-d2.y,d2.x)*l2*(.045/(r2+.045)) - d2*l2*(.048/(r2+.12));
   q += vec2(-d3.y,d3.x)*l3*(.038/(r3+.050)) - d3*l3*(.040/(r3+.13));
-  float blackHole=max(max(smoothstep(.070,.018,r1)*l1, smoothstep(.060,.016,r2)*l2), smoothstep(.052,.014,r3)*l3);
+  float blackHole=max(max(max(smoothstep(.070,.018,r1)*l1, smoothstep(.060,.016,r2)*l2), smoothstep(.052,.014,r3)*l3), noxusCore);
   float accretion=max(max(ridge(r1,.185,.050)*l1, ridge(r2,.155,.043)*l2), ridge(r3,.132,.038)*l3);
   float outerLens=max(max(ridge(r1,.305,.120)*l1, ridge(r2,.255,.105)*l2), ridge(r3,.220,.090)*l3);
 
@@ -525,6 +536,18 @@ void main(){
   float pale=ridge(plasma,.86,.11)*.45;
   float sparks=smoothstep(.975,1.0,noise(q2*72.0+vec2(time*.9,-time*.7)));
   sparks += smoothstep(.985,1.0,noise(q2*128.0+vec2(-time*1.2,time*.8)))*blueVein*.55;
+  vec2 sx=q2-hx;
+  float sr=length(sx)+.001;
+  float sa=atan(sx.y,sx.x);
+  float diskNoise=noise(vec2(sa*1.35+time*.95, sr*7.0-time*.50))+
+                  noise(vec2(sa*3.10-time*.55, sr*13.0+time*.20))*.5;
+  float noxusDisk=ridge(sr,.185+.024*sin(time*.75),.055)*(.35+.65*diskNoise)*smoothstep(.035,.11,sr)*smoothstep(.58,.10,sr)*noxusReach;
+  float noxusPhoton=ridge(sr,.098,.018)*(.65+.35*sin(sa*5.0-time*3.0))*noxusReach;
+  float noxusLens=ridge(sr,.310+.035*bossBeat,.090)*(.45+.55*noise(vec2(sa*2.0+time*.42,sr*5.0)))*noxusReach;
+  float noxusShock=ridge(sr,.22+phase*.62,.028)*(1.0-phase)*power;
+  float noxusDust=smoothstep(.982,1.0,noise(vec2(sa*9.0-sr*18.0+time*1.6, sr*32.0-time*.8)))*
+                  smoothstep(.65,.060,sr)*noxusReach;
+  float noxusTidal=ridge(sin(sa*2.0+sr*18.0-time*2.2+n2*2.0)*.5+.5,.52,.26)*smoothstep(.50,.05,sr)*noxusReach;
 
   vec3 base=mix(vec3(.006,.008,.026),vec3(.010,.028,.070),abyss*.64);
   vec3 col=base;
@@ -550,6 +573,13 @@ void main(){
   col+=vec3(.95,.12,.88)*sparks*.70;
   col+=vec3(.16,.95,.35)*sparks*smoothstep(.52,1.0,emerald+magenta)*.38;
   col+=vec3(.20,.45,1.0)*sparks*blueVein*.35;
+  vec3 noxusHue=mix(vec3(.18,.42,1.0),vec3(1.0,.22,.06),.5+.5*sin(sa*2.0-time*1.3+diskNoise));
+  col+=noxusHue*noxusDisk*1.10;
+  col+=vec3(.65,.82,1.0)*noxusPhoton*.82;
+  col+=spectrum(sa*.12+time*.18+diskNoise*.21)*noxusLens*.46;
+  col+=vec3(.85,.96,1.0)*noxusShock*.34;
+  col+=vec3(.85,.16,1.0)*noxusDust*.85;
+  col+=vec3(.12,.62,1.0)*noxusTidal*.40;
   col=mix(col,vec3(.0,.0,.006),blackHole*.88);
   col+=spectrum(time*.11+atan(q.y,q.x)*.20+plasma*.45)*accretion*.92;
   col+=vec3(.68,.86,1.0)*outerLens*.24;
@@ -560,12 +590,14 @@ void main(){
   col=pow(max(col,0.0),vec3(.82));
 
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
-                     aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
-                     rainbowField*.42+prism*.34+accretion*.74+outerLens*.30,0.0,1.0);
+                      aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
+                      rainbowField*.42+prism*.34+accretion*.74+outerLens*.30+
+                      noxusDisk*.82+noxusPhoton*.60+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
-  alpha=clamp(alpha*(1.0-blackHole*.35)+accretion*.22*power,0.0,.82);
+  alpha=clamp(alpha*(1.0-blackHole*.35)+accretion*.22*power+
+              (noxusDisk*.20+noxusLens*.10+noxusPhoton*.14+noxusShock*.12+noxusDust*.20)*power,0.0,.85);
   gl_FragColor=vec4(col,alpha);
 }
 `;
