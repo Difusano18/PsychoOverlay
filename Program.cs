@@ -466,6 +466,22 @@ vec3 spectrum(float x){
   vec3 c=.5+.5*cos(6.2831853*(x+vec3(.00,.34,.67)));
   return pow(c,vec3(.72));
 }
+vec3 paletteGrade(vec3 c,float id,float n){
+  float l=dot(c,vec3(.299,.587,.114));
+  float m=mod(id,7.0);
+  vec3 shadow=vec3(.004,.006,.018), mid=vec3(.12,.04,.45), hi=vec3(.95,.12,.88);
+  if(m<1.0){shadow=vec3(.004,.010,.025);mid=vec3(.06,.20,.12);hi=vec3(.55,1.00,.72);}
+  else if(m<2.0){shadow=vec3(.006,.002,.025);mid=vec3(.35,.05,.72);hi=vec3(1.00,.13,.90);}
+  else if(m<3.0){shadow=vec3(.012,.005,.010);mid=vec3(.48,.10,.035);hi=vec3(1.00,.70,.18);}
+  else if(m<4.0){shadow=vec3(.002,.008,.028);mid=vec3(.03,.18,.55);hi=vec3(.18,.88,1.00);}
+  else if(m<5.0){shadow=vec3(.015,.000,.018);mid=vec3(.55,.02,.14);hi=vec3(1.00,.18,.35);}
+  else if(m<6.0){shadow=vec3(.000,.004,.020);mid=vec3(.05,.30,.38);hi=vec3(.08,1.00,.48);}
+  else{shadow=vec3(.010,.006,.030);mid=vec3(.16,.07,.62);hi=vec3(.85,.82,1.00);}
+  vec3 mapped=mix(shadow,mid,smoothstep(.025,.54,l));
+  mapped=mix(mapped,hi,smoothstep(.46,1.0,l));
+  mapped+=spectrum(id*.173+n*.42+l*.30)*smoothstep(.18,.92,l)*.16;
+  return mix(mapped,c,.20);
+}
 
 void main(){
   vec2 uv=gl_FragCoord.xy/r;
@@ -476,27 +492,19 @@ void main(){
   vec2 q=p;
   q += vec2(fbm(p*1.15+vec2(time*.07,-time*.04)), fbm(p*1.10+vec2(-time*.05,time*.06)))*.72-.36;
   q += vec2(sin(p.y*7.0+time*.9), cos(p.x*6.0-time*.7))*.035*power;
-  vec2 bhc=vec2(.86*sin(time*.30-1.0), .36*sin(time*.19+1.4));
-  vec2 bhd=p-bhc;
-  float bhr=length(bhd)+.001;
-  float bha=atan(bhd.y,bhd.x);
-  float bhPulse=.82+.18*sin(time*1.35);
-  float bhReach=smoothstep(.74,.030,bhr)*power;
-  q += vec2(-bhd.y,bhd.x)*(.058*bhPulse/(bhr+.045))*bhReach - bhd*(.048/(bhr+.075))*bhReach;
 
   vec2 h1=vec2(.52*sin(time*.17), .32*cos(time*.13));
   vec2 h2=vec2(.62*sin(time*.11+2.1), .38*cos(time*.16+1.4));
   vec2 h3=vec2(.40*sin(time*.21+4.2), .26*cos(time*.10+3.3));
-  vec2 hx=bhc;
+  vec2 hx=vec2(.78*sin(time*.20+1.1), .34*sin(time*.13+2.0));
   vec2 dx=q-hx;
   float rx=length(dx)+.001;
   float bossBeat=pow(.5+.5*sin(time*.42),3.0);
   float waveA=.5+.5*sin(time*.31+1.7);
   float waveB=.5+.5*sin(time*.47+4.1);
   float noxusReach=smoothstep(1.05,.025,rx)*power;
-  float noxusCore=smoothstep(.125,.020,rx)*noxusReach;
-  float noxusSwirl=(.120+.030*bossBeat)/(rx+.045)*noxusReach;
-  float noxusPull=(.090+.024*bossBeat)/(rx+.080)*noxusReach;
+  float noxusSwirl=(.070+.020*bossBeat)/(rx+.060)*noxusReach;
+  float noxusPull=(.040+.018*bossBeat)/(rx+.105)*noxusReach;
   q += vec2(-dx.y,dx.x)*noxusSwirl - dx*noxusPull;
   q += dx/rx*(ridge(rx,.31+.12*waveA,.090)+ridge(rx,.56+.18*waveB,.120)*.62)*(.018+.025*bossBeat)*power;
   vec2 d1=q-h1, d2=q-h2, d3=q-h3;
@@ -507,9 +515,6 @@ void main(){
   q += vec2(-d1.y,d1.x)*l1*(.052/(r1+.040)) - d1*l1*(.060/(r1+.12));
   q += vec2(-d2.y,d2.x)*l2*(.045/(r2+.045)) - d2*l2*(.048/(r2+.12));
   q += vec2(-d3.y,d3.x)*l3*(.038/(r3+.050)) - d3*l3*(.040/(r3+.13));
-  float blackHole=max(max(max(smoothstep(.070,.018,r1)*l1, smoothstep(.060,.016,r2)*l2), smoothstep(.052,.014,r3)*l3), noxusCore);
-  float accretion=max(max(ridge(r1,.185,.050)*l1, ridge(r2,.155,.043)*l2), ridge(r3,.132,.038)*l3);
-  float outerLens=max(max(ridge(r1,.305,.120)*l1, ridge(r2,.255,.105)*l2), ridge(r3,.220,.090)*l3);
 
   vec2 q2=q;
   q2 += vec2(fbm(q*2.0+time*.10), fbm(q*2.2-time*.09))*.34-.17;
@@ -550,22 +555,11 @@ void main(){
   float sa=atan(sx.y,sx.x);
   float diskNoise=noise(vec2(sa*1.35+time*.95, sr*7.0-time*.50))+
                   noise(vec2(sa*3.10-time*.55, sr*13.0+time*.20))*.5;
-  float noxusDisk=ridge(sr,.215+.024*sin(time*.75),.075)*(.35+.65*diskNoise)*smoothstep(.038,.13,sr)*smoothstep(.72,.12,sr)*noxusReach;
-  float noxusPhoton=ridge(sr,.118,.026)*(.65+.35*sin(sa*5.0-time*3.0))*noxusReach;
   float noxusLens=ridge(sr,.360+.055*bossBeat,.130)*(.45+.55*noise(vec2(sa*2.0+time*.42,sr*5.0)))*noxusReach;
   float noxusShock=(ridge(sr,.24+.18*waveA,.036)*(1.0-waveA*.42)+ridge(sr,.55+.18*waveB,.052)*(1.0-waveB*.35))*.62*power;
   float noxusDust=smoothstep(.982,1.0,noise(vec2(sa*9.0-sr*18.0+time*1.6, sr*32.0-time*.8)))*
                   smoothstep(.65,.060,sr)*noxusReach;
   float noxusTidal=ridge(sin(sa*2.0+sr*18.0-time*2.2+n2*2.0)*.5+.5,.52,.26)*smoothstep(.50,.05,sr)*noxusReach;
-  vec2 bdp=rot(bhd,time*.52);
-  float bhGrain=noise(vec2(bha*2.6+time*1.4,bhr*8.5-time*.35))+
-                noise(vec2(bha*5.2-time*.8,bhr*18.0+time*.22))*.42;
-  float bhCore=smoothstep(.112,.065,bhr)*power;
-  float bhShadow=smoothstep(.185,.072,bhr)*power;
-  float bhDisk=ridge(abs(bdp.y),0.0,.021)*smoothstep(.060,.155,bhr)*smoothstep(.36,.095,bhr)*(.42+.58*bhGrain)*power;
-  float bhPhoton=ridge(bhr,.122,.024)*(.72+.28*sin(bha*6.0-time*3.1))*power;
-  float bhHalo=(ridge(bhr,.185,.070)*.58+ridge(bhr,.300,.130)*.32)*power;
-  float bhLens=ridge(bhr,.255,.092)*(.55+.45*sin(bha*3.0+time*1.7))*power;
 
   vec3 base=mix(vec3(.006,.008,.026),vec3(.010,.028,.070),abyss*.64);
   vec3 col=base;
@@ -593,21 +587,21 @@ void main(){
   col+=vec3(.16,.95,.35)*sparks*smoothstep(.52,1.0,emerald+magenta)*.38;
   col+=vec3(.20,.45,1.0)*sparks*blueVein*.35;
   vec3 noxusHue=mix(vec3(.18,.42,1.0),vec3(1.0,.22,.06),.5+.5*sin(sa*2.0-time*1.3+diskNoise));
-  col+=noxusHue*noxusDisk*1.10;
-  col+=vec3(.65,.82,1.0)*noxusPhoton*.82;
   col+=spectrum(sa*.12+time*.18+diskNoise*.21)*noxusLens*.46;
   col+=vec3(.85,.96,1.0)*noxusShock*.34;
   col+=vec3(.85,.16,1.0)*noxusDust*.85;
   col+=vec3(.12,.62,1.0)*noxusTidal*.40;
-  col=mix(col,vec3(.0,.0,.003),blackHole*.86);
-  col+=spectrum(time*.11+atan(q.y,q.x)*.20+plasma*.45)*accretion*.92;
-  col+=vec3(.68,.86,1.0)*outerLens*.24;
-  vec3 bhDiskColor=mix(vec3(1.0,.42,.08),vec3(1.0,.92,.58),smoothstep(.60,1.20,bhGrain));
-  col+=bhDiskColor*bhDisk*1.65;
-  col+=vec3(1.0,.96,.82)*bhPhoton*1.24;
-  col+=vec3(.95,.55,.18)*bhHalo*.64;
-  col+=spectrum(bha*.10+time*.12+bhGrain*.16)*bhLens*.28;
-  col=mix(col,vec3(.0,.0,.0),bhCore*.99);
+  col+=noxusHue*noxusLens*.18;
+
+  float paletteClock=time*.155;
+  float palettePhase=fract(paletteClock);
+  float paletteId=floor(paletteClock);
+  float paletteCut=smoothstep(.76,.86,palettePhase);
+  float paletteNoise=fbm(q2*.85+vec2(paletteId*.21,time*.025));
+  vec3 paletteA=paletteGrade(col,paletteId,paletteNoise);
+  vec3 paletteB=paletteGrade(col,paletteId+1.0,paletteNoise);
+  col=mix(paletteA,paletteB,paletteCut);
+  col+=spectrum(paletteId*.21+paletteNoise+time*.035)*ridge(palettePhase,.82,.050)*.22*power;
 
   float l=dot(col,vec3(.299,.587,.114));
   col=sat(col,2.02+.35*magenta+.22*emerald+.20*blueVein+.18*kaleido+.14*aurora+.18*rainbowField+.15*prism);
@@ -616,15 +610,11 @@ void main(){
 
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
                       aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
-                      rainbowField*.42+prism*.34+accretion*.74+outerLens*.30+
-                      noxusDisk*.82+noxusPhoton*.60+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38+
-                      bhDisk*.90+bhPhoton*.74+bhHalo*.48+bhLens*.34,0.0,1.0);
+                      rainbowField*.42+prism*.34+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
-  alpha=clamp(alpha+blackHole*.34*power+accretion*.22*power+
-              (noxusDisk*.28+noxusLens*.16+noxusPhoton*.20+noxusShock*.15+noxusDust*.22+
-               bhShadow*.52+bhDisk*.34+bhPhoton*.30+bhHalo*.16+bhLens*.13)*power,0.0,.90);
+  alpha=clamp(alpha+(noxusLens*.16+noxusShock*.15+noxusDust*.22)*power,0.0,.86);
   gl_FragColor=vec4(col,alpha);
 }
 `;
