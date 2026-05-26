@@ -26,7 +26,8 @@ public sealed class OverlayForm : Form
         Flow = 1,
         TextureTrip = 2,
         GlyphGlitch = 3,
-        FullTrip = 4
+        FullTrip = 4,
+        Chaos = 5
     }
 
     private const int WS_EX_TRANSPARENT = 0x20;
@@ -219,6 +220,14 @@ public sealed class OverlayForm : Form
                     paused = !paused;
                     ShowHint();
                     break;
+                case HotkeyPrevMode:
+                case HotkeyPrevModeF:
+                    SetEffectMode(EffectMode.FullTrip);
+                    break;
+                case HotkeyNextMode:
+                case HotkeyNextModeF:
+                    SetEffectMode(EffectMode.Chaos);
+                    break;
                 case HotkeyExit:
                 case HotkeyExitF:
                     Close();
@@ -234,6 +243,12 @@ public sealed class OverlayForm : Form
         hintSeconds = 2.6f;
         needsFrame = true;
         PushGpuState();
+    }
+
+    private void SetEffectMode(EffectMode nextMode)
+    {
+        mode = nextMode;
+        ShowHint();
     }
 
     private void UpdateTimerInterval()
@@ -299,6 +314,7 @@ public sealed class OverlayForm : Form
                 EffectMode.TextureTrip => 0.92f,
                 EffectMode.GlyphGlitch => 0.98f,
                 EffectMode.FullTrip => 1.24f,
+                EffectMode.Chaos => 1.34f,
                 _ => 1f
             };
             return Math.Clamp(intensity * modeScale + surge, 0f, 0.78f);
@@ -402,7 +418,7 @@ public sealed class OverlayForm : Form
 
         string intensityValue = targetIntensity.ToString(System.Globalization.CultureInfo.InvariantCulture);
         string pausedValue = paused ? "true" : "false";
-        _ = gpuView.CoreWebView2.ExecuteScriptAsync($"window.setOverlayState && window.setOverlayState({intensityValue}, {pausedValue});");
+        _ = gpuView.CoreWebView2.ExecuteScriptAsync($"window.setOverlayState && window.setOverlayState({intensityValue}, {pausedValue}, {(int)mode});");
     }
 
     private static string BuildGpuOverlayHtml()
@@ -419,7 +435,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:
 </style>
 </head>
 <body>
-<canvas id="c"></canvas><div id="hud">Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | NILK GPU</div>
+<canvas id="c"></canvas><div id="hud">Num1 NILK | Num2 CHAOS | Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
@@ -437,6 +453,7 @@ precision highp float;
 uniform vec2 r;
 uniform float t;
 uniform float intensity;
+uniform float mode;
 varying vec2 v;
 
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
@@ -491,11 +508,16 @@ void main(){
   vec2 uv=gl_FragCoord.xy/r;
   vec2 p=(uv-.5)*vec2(r.x/r.y,1.0);
   float power=clamp(intensity*1.55,0.0,1.0);
+  float chaos=step(4.5,mode);
   float time=t*.72;
 
   vec2 q=p;
   q += vec2(fbm(p*1.15+vec2(time*.07,-time*.04)), fbm(p*1.10+vec2(-time*.05,time*.06)))*.72-.36;
   q += vec2(sin(p.y*7.0+time*.9), cos(p.x*6.0-time*.7))*.035*power;
+  vec2 panic=rot(p,time*.10);
+  float thought=sin(panic.x*32.0+fbm(panic*3.3+time*.08)*8.0+time*2.7)*
+                cos(panic.y*27.0-fbm(panic*4.1-time*.06)*7.0-time*2.1);
+  q += vec2(sin(thought*3.1+time*1.8),cos(thought*2.7-time*1.4))*.020*power*chaos;
 
   vec2 h1=vec2(.52*sin(time*.17), .32*cos(time*.13));
   vec2 h2=vec2(.62*sin(time*.11+2.1), .38*cos(time*.16+1.4));
@@ -564,6 +586,10 @@ void main(){
   float noxusDust=smoothstep(.982,1.0,noise(vec2(sa*9.0-sr*18.0+time*1.6, sr*32.0-time*.8)))*
                   smoothstep(.65,.060,sr)*noxusReach;
   float noxusTidal=ridge(sin(sa*2.0+sr*18.0-time*2.2+n2*2.0)*.5+.5,.52,.26)*smoothstep(.50,.05,sr)*noxusReach;
+  vec2 shatter=rot(q2,time*.16);
+  float chaosShard=ridge(sin((shatter.x*21.0-shatter.y*14.0+n3*5.7)+time*2.3)*.5+.5,.50,.115)*chaos*power;
+  float chaosThread=ridge(sin((shatter.x*8.0+shatter.y*19.0+n2*6.4)-time*1.7)*.5+.5,.56,.090)*chaos*power;
+  float chaosPulse=smoothstep(.88,1.0,fbm(q2*18.0+vec2(time*.55,-time*.48)+n1*2.0))*chaos*power;
 
   vec3 base=mix(vec3(.006,.008,.026),vec3(.010,.028,.070),abyss*.64);
   vec3 col=base;
@@ -596,6 +622,9 @@ void main(){
   col+=vec3(.85,.16,1.0)*noxusDust*.85;
   col+=vec3(.12,.62,1.0)*noxusTidal*.40;
   col+=noxusHue*noxusLens*.18;
+  col=mix(col,1.0-col,chaosShard*.20);
+  col+=spectrum(time*.19+n2*.35+sa*.12)*chaosShard*.42;
+  col+=vec3(.88,.08,1.0)*chaosThread*.22 + vec3(.05,.95,.72)*chaosPulse*.20;
 
   float paletteClock=time*.155;
   float palettePhase=fract(paletteClock);
@@ -610,20 +639,22 @@ void main(){
   vec3 lsdB=spectrum(colorField*.21-flow*.09+paletteId*.17+time*.018);
   float colorMask=smoothstep(.16,.92,plasma+n2*.18)*(.22+.18*rainbowField+.12*kaleido);
   col=mix(col,mix(lsdA,lsdB,.36+.24*sin(colorField*6.2831853)),colorMask*power);
+  col=mix(col,spectrum(colorField*.42+n3*.33+time*.11),chaos*(.10+.18*chaosShard+.12*chaosPulse)*power);
   col+=spectrum(paletteId*.21+paletteNoise+time*.035)*ridge(palettePhase,.82,.050)*.12*power;
 
   float l=dot(col,vec3(.299,.587,.114));
-  col=sat(col,1.54+.18*magenta+.14*emerald+.12*blueVein+.11*kaleido+.09*aurora+.12*rainbowField+.10*prism);
-  col=(col-.070)*1.22+.070;
-  col=pow(max(col,0.0),vec3(.88));
+  col=sat(col,1.54+.18*magenta+.14*emerald+.12*blueVein+.11*kaleido+.09*aurora+.12*rainbowField+.10*prism+chaos*.20);
+  col=(col-.070)*(1.22+chaos*.10)+.070;
+  col=pow(max(col,0.0),vec3(.88-chaos*.03));
 
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
                       aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
-                      rainbowField*.42+prism*.34+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38,0.0,1.0);
+                      rainbowField*.42+prism*.34+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38+
+                      chaosShard*.45+chaosThread*.34+chaosPulse*.42,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
-  alpha=clamp(alpha+(noxusLens*.16+noxusShock*.15+noxusDust*.22)*power,0.0,.86);
+  alpha=clamp(alpha+(noxusLens*.16+noxusShock*.15+noxusDust*.22+chaosShard*.12+chaosPulse*.10)*power,0.0,.88);
   gl_FragColor=vec4(col,alpha);
 }
 `;
@@ -645,10 +676,10 @@ void main(){
   const attr=gl.getAttribLocation(program,'a');
   gl.enableVertexAttribArray(attr);
   gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
-  const ur=gl.getUniformLocation(program,'r'), ut=gl.getUniformLocation(program,'t'), ui=gl.getUniformLocation(program,'intensity');
+  const ur=gl.getUniformLocation(program,'r'), ut=gl.getUniformLocation(program,'t'), ui=gl.getUniformLocation(program,'intensity'), um=gl.getUniformLocation(program,'mode');
 
-  let targetIntensity=.52, shownIntensity=.52, paused=false, shaderTime=0, last=performance.now();
-  window.setOverlayState=(i,p)=>{targetIntensity=Math.max(0,Math.min(.9,Number(i)||0));paused=!!p;hud.textContent=`Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | NILK GPU INT ${Math.round(targetIntensity*100)}%${paused?' PAUSED':''}`;};
+  let targetIntensity=.52, shownIntensity=.52, currentMode=4, paused=false, shaderTime=0, last=performance.now();
+  window.setOverlayState=(i,p,m)=>{targetIntensity=Math.max(0,Math.min(.9,Number(i)||0));paused=!!p;currentMode=Number(m)||4;const label=currentMode>=5?'CHAOS':'NILK';hud.textContent=`Num1 NILK | Num2 CHAOS | Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | ${label} INT ${Math.round(targetIntensity*100)}%${paused?' PAUSED':''}`;};
   function resize(){
     const dpr=Math.min(devicePixelRatio||1,1.35);
     const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
@@ -664,6 +695,7 @@ void main(){
     gl.uniform2f(ur,canvas.width,canvas.height);
     gl.uniform1f(ut,shaderTime);
     gl.uniform1f(ui,shownIntensity);
+    gl.uniform1f(um,currentMode);
     gl.drawArrays(gl.TRIANGLES,0,3);
     requestAnimationFrame(frame);
   }
@@ -1525,8 +1557,8 @@ void main(){
             return;
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
-        string state = paused ? "PAUSED" : $"NILK | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = $"Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | {state}";
+        string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
+        string text = $"Num1 NILK | Num2 CHAOS | Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -1545,6 +1577,7 @@ void main(){
             EffectMode.TextureTrip => "TEXTURE TRIP",
             EffectMode.GlyphGlitch => "SOFT GLITCH",
             EffectMode.FullTrip => "FULL TRIP",
+            EffectMode.Chaos => "CHAOS",
             _ => "UNKNOWN"
         };
     }
@@ -1734,6 +1767,8 @@ void main(){
 
         RegisterHotKey(Handle, HotkeyIntensityUp, directMods, (uint)Keys.Add);
         RegisterHotKey(Handle, HotkeyIntensityDown, directMods, (uint)Keys.Subtract);
+        RegisterHotKey(Handle, HotkeyPrevMode, directMods, (uint)Keys.NumPad1);
+        RegisterHotKey(Handle, HotkeyNextMode, directMods, (uint)Keys.NumPad2);
         RegisterHotKey(Handle, HotkeyTogglePause, mods, (uint)Keys.P);
         RegisterHotKey(Handle, HotkeyExit, mods, (uint)Keys.Q);
     }
