@@ -115,8 +115,8 @@ public sealed class OverlayForm : Form
     private EffectMode mode = EffectMode.FullTrip;
     private float time;
     private float previousSeconds;
-    private float intensity = 0.38f;
-    private float targetIntensity = 0.38f;
+    private float intensity = 0.52f;
+    private float targetIntensity = 0.52f;
     private float surge;
     private float hintSeconds = 7f;
     private bool paused;
@@ -343,16 +343,16 @@ public sealed class OverlayForm : Form
 
     private void RenderFullTripLowRes(Graphics target, int w, int h, float p)
     {
-        int lowW = Math.Clamp(w / 6, 240, 360);
-        int lowH = Math.Max(135, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
+        int lowW = Math.Clamp(w / 3, 560, 860);
+        int lowH = Math.Max(315, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
         EnsureTripSurface(lowW, lowH);
 
         RenderNilkShaderPixels(lowW, lowH, p);
 
         InterpolationMode oldInterpolation = target.InterpolationMode;
         PixelOffsetMode oldPixelOffset = target.PixelOffsetMode;
-        target.InterpolationMode = InterpolationMode.Bilinear;
-        target.PixelOffsetMode = PixelOffsetMode.Half;
+        target.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        target.PixelOffsetMode = PixelOffsetMode.HighQuality;
         target.DrawImage(tripBitmap!, new Rectangle(0, 0, w, h), 0, 0, lowW, lowH, GraphicsUnit.Pixel);
         target.InterpolationMode = oldInterpolation;
         target.PixelOffsetMode = oldPixelOffset;
@@ -411,26 +411,26 @@ public sealed class OverlayForm : Form
             float smoothOpacity = opacity * opacity * (3f - opacity * 2f);
             float effective = Math.Clamp(opacity * (0.35f + smoothOpacity * 0.95f), 0f, 1f);
             float overlayPower = Math.Clamp(opacity * 1.45f, 0f, 1f);
-            float progress = Frac(0.155f + time / NilkCycleSeconds);
+            float progress = Frac(0.985f + time / NilkCycleSeconds);
             float minute = progress * 60f;
             float cyanPhase = Saturate(
                 Bell(minute, 8.7f, 2.35f) +
                 Bell(minute, 15.4f, 2.85f) * 0.95f +
                 Bell(minute, 56.8f, 2.80f) * 0.90f);
             float palePhase = Saturate(
-                Bell(minute, 16.4f, 2.20f) * 0.70f +
-                Bell(minute, 57.6f, 1.70f) * 0.55f);
+                Bell(minute, 16.4f, 2.20f) * 0.18f +
+                Bell(minute, 57.6f, 1.70f) * 0.14f);
             float voidPhase = Saturate(TimeWindow(minute, 20.0f, 43.5f, 3.2f));
             float redPhase = Saturate(
                 BellWrapped(minute, 59.25f, 60f, 1.85f) +
                 TimeWindow(minute, 58.2f, 60.0f, 1.0f) * 0.55f);
 
-            float centerX = 0.5f + MathF.Sin(time * 0.071f) * 0.050f * overlayPower;
-            float centerY = 0.5f + MathF.Cos(time * 0.061f) * 0.044f * overlayPower;
+            float centerX = 0.53f + MathF.Sin(time * 0.051f) * 0.024f * overlayPower;
+            float centerY = 0.50f + MathF.Cos(time * 0.047f) * 0.020f * overlayPower;
             float invW = 1f / Math.Max(w - 1, 1);
             float invH = 1f / Math.Max(h - 1, 1);
             float aspect = h / (float)Math.Max(w, 1);
-            float baseAngle = time * (0.115f + overlayPower * 0.045f) + cyanPhase * 0.22f - redPhase * 0.16f;
+            float baseAngle = -0.18f + MathF.Sin(time * 0.055f) * 0.11f + cyanPhase * 0.10f - redPhase * 0.08f;
             float baseCos = MathF.Cos(baseAngle);
             float baseSin = MathF.Sin(baseAngle);
             float lowTime = time * 0.18f;
@@ -452,8 +452,8 @@ public sealed class OverlayForm : Form
                     float px = u - centerX;
                     float py = (v - centerY) * aspect;
                     float dist = MathF.Sqrt(px * px + py * py);
-                    float twist = (0.32f + cyanPhase * 0.18f + redPhase * 0.30f) * effective / MathF.Max(0.095f, dist + 0.055f);
-                    twist += MathF.Sin(dist * 13.5f - fastTime) * 0.105f * effective;
+                    float twist = (0.12f + cyanPhase * 0.07f + redPhase * 0.09f) * effective / MathF.Max(0.17f, dist + 0.11f);
+                    twist += MathF.Sin(dist * 13.5f - fastTime) * 0.050f * effective;
                     float twistCos = MathF.Cos(twist);
                     float twistSin = MathF.Sin(twist);
                     float rx = px * twistCos - py * twistSin;
@@ -461,8 +461,8 @@ public sealed class OverlayForm : Form
                     float sx0 = rx * baseCos - ry * baseSin;
                     float sy0 = rx * baseSin + ry * baseCos;
 
-                    float ribbon = MathF.Sin((sx0 * 2.2f + sy0 * 1.35f) * MathF.Tau + lowTime) * 0.046f * effective;
-                    ribbon += MathF.Sin((sx0 * 5.0f - sy0 * 3.4f) * MathF.Tau - midTime) * 0.020f * effective;
+                    float ribbon = MathF.Sin((sx0 * 1.75f + sy0 * 2.25f) * MathF.Tau + lowTime) * 0.052f * effective;
+                    ribbon += MathF.Sin((sx0 * 4.4f - sy0 * 5.8f) * MathF.Tau - midTime) * 0.026f * effective;
                     float swirlU = 0.5f + sx0 + ribbon + MathF.Sin(sy0 * 9.5f + lowTime) * 0.018f * effective;
                     float swirlV = 0.5f + sy0 / Math.Max(aspect, 0.35f) - ribbon + MathF.Cos(sx0 * 8.5f - midTime) * 0.018f * effective;
 
@@ -471,7 +471,10 @@ public sealed class OverlayForm : Form
                     float texC = SampleNoise(noise, nw, nh, ns, swirlU * 3.25f + texB * 0.30f, swirlV * 2.75f - time * 0.015f);
                     float wave = MathF.Sin((swirlU * 1.18f + swirlV * 0.92f + texB * 1.7f) * MathF.Tau + lowTime);
                     float ripple = MathF.Sin(dist * 24f - time * 0.72f + texC * 3.1f);
-                    float field = Math.Clamp(texA * 0.44f + texB * 0.34f + texC * 0.16f + wave * 0.090f + ripple * 0.045f, 0f, 1f);
+                    float flowBand = MathF.Sin((swirlV * 7.2f + swirlU * 1.65f) * MathF.Tau + texB * 5.4f - time * 0.38f);
+                    float tearBand = MathF.Sin((swirlV * 18.5f - swirlU * 4.8f) + texC * 4.0f + time * 0.72f);
+                    float field = Math.Clamp(texA * 0.40f + texB * 0.31f + texC * 0.16f + wave * 0.080f + ripple * 0.040f +
+                                             flowBand * 0.070f + tearBand * 0.030f, 0f, 1f);
                     float edgeCenter = 0.47f + MathF.Sin(time * 0.19f + texB * 2.0f) * 0.085f;
                     float contour = 1f - SmoothStep(0.020f, 0.130f, MathF.Abs(field - edgeCenter));
 
@@ -480,28 +483,45 @@ public sealed class OverlayForm : Form
                     float deepBand = 1f - SmoothStep(0.20f, 0.50f, field);
                     float hotBand = SmoothStep(0.72f, 0.96f, field);
 
-                    float r = 12f + deepBand * 8f + greenBand * 18f + violetBand * 118f + hotBand * 50f + contour * 42f;
-                    float g = 15f + deepBand * 12f + greenBand * 112f + violetBand * 20f + hotBand * 34f + contour * 36f;
-                    float b = 31f + deepBand * 76f + greenBand * 46f + violetBand * 112f + hotBand * 54f + contour * 48f;
+                    float r = 10f + deepBand * 8f + greenBand * 18f + violetBand * 132f + hotBand * 54f + contour * 56f;
+                    float g = 12f + deepBand * 10f + greenBand * 122f + violetBand * 18f + hotBand * 32f + contour * 34f;
+                    float b = 28f + deepBand * 72f + greenBand * 42f + violetBand * 122f + hotBand * 50f + contour * 54f;
 
                     float cyanMix = cyanPhase * (0.55f + field * 0.42f);
                     r = Lerp(r, 115f + field * 120f, cyanMix);
                     g = Lerp(g, 186f + field * 58f, cyanMix);
                     b = Lerp(b, 202f + field * 50f, cyanMix);
 
-                    float paleMix = palePhase * (0.32f + SmoothStep(0.58f, 0.95f, field) * 0.55f);
-                    r = Lerp(r, 238f, paleMix);
-                    g = Lerp(g, 244f, paleMix);
-                    b = Lerp(b, 247f, paleMix);
+                    float paleMix = palePhase * SmoothStep(0.74f, 0.98f, field) * (0.22f + contour * 0.18f);
+                    r = Lerp(r, 232f, paleMix);
+                    g = Lerp(g, 240f, paleMix);
+                    b = Lerp(b, 246f, paleMix);
 
-                    float redMix = redPhase * (0.68f + contour * 0.32f);
-                    float toxicMix = SmoothStep(0.34f, 0.80f, texC + contour * 0.22f);
-                    float rr = Lerp(8f + field * 155f, 236f, contour * 0.38f);
-                    float rg = Lerp(3f + field * 78f, 236f, toxicMix * contour);
-                    float rb = Lerp(0f + field * 18f, 210f, contour * 0.82f);
+                    float redMix = redPhase * (0.86f + contour * 0.34f);
+                    float toxicMix = SmoothStep(0.30f, 0.76f, texC + contour * 0.26f);
+                    float rr = Lerp(7f + field * 190f, 245f, contour * 0.42f);
+                    float rg = Lerp(3f + field * 86f, 245f, toxicMix * contour);
+                    float rb = Lerp(0f + field * 22f, 218f, contour * 0.88f);
                     r = Lerp(r, rr, redMix);
                     g = Lerp(g, rg, redMix);
                     b = Lerp(b, rb, redMix);
+
+                    float broadBand = redPhase * SmoothStep(-0.35f, 0.76f, flowBand + field * 0.58f + texA * 0.22f);
+                    float molten = SmoothStep(0.22f, 0.84f, field + texB * 0.24f);
+                    r = Lerp(r, 102f + molten * 128f, broadBand * 0.42f);
+                    g = Lerp(g, 35f + molten * 64f, broadBand * 0.32f);
+                    b = Lerp(b, 12f + violetBand * 172f + contour * 45f, broadBand * 0.38f);
+
+                    float cellSeed = SampleNoise(noise, nw, nh, ns, swirlU * 5.2f + texA * 0.35f, swirlV * 4.1f - texB * 0.25f);
+                    float cell = SmoothStep(0.58f, 0.76f, cellSeed + field * 0.26f);
+                    float cellRim = (1f - SmoothStep(0.76f, 0.96f, cellSeed + field * 0.20f)) * cell * redPhase;
+                    float greenCore = SmoothStep(0.78f, 0.98f, cellSeed + texC * 0.24f) * redPhase;
+                    r = Lerp(r, 230f, cellRim * 0.72f);
+                    g = Lerp(g, 12f, cellRim * 0.42f);
+                    b = Lerp(b, 218f, cellRim * 0.86f);
+                    r = Lerp(r, 20f, greenCore * 0.86f);
+                    g = Lerp(g, 238f, greenCore);
+                    b = Lerp(b, 42f, greenCore * 0.88f);
 
                     float voidMix = voidPhase * (0.22f + deepBand * 0.22f);
                     r = Lerp(r, 8f + violetBand * 30f, voidMix);
@@ -522,8 +542,8 @@ public sealed class OverlayForm : Form
                     float previousB = Math.Min(previous[previousIndex + 0] * 2.1f, 255f);
                     float blendNoise = SampleNoise(noise, nw, nh, ns, u * 1.4f + previousR * 0.0027f, v * 0.9f + previousB * 0.0027f);
                     float datamosh = SmoothStep(1f - NilkDatamoshIntensity, 1f, blendNoise * 0.5f) *
-                                     MathF.Pow(overlayPower, 1.75f) *
-                                     (0.42f + cyanPhase * 0.18f + voidPhase * 0.20f + redPhase * 0.42f);
+                                     MathF.Pow(overlayPower, 1.65f) *
+                                     (0.10f + cyanPhase * 0.07f + voidPhase * 0.08f + redPhase * 0.14f);
 
                     if (datamosh > 0.001f)
                     {
@@ -532,12 +552,21 @@ public sealed class OverlayForm : Form
                         b = Lerp(b, previousB, datamosh);
                     }
 
+                    float fragment = SmoothStep(0.974f, 0.998f, SampleNoise(noise, nw, nh, ns, swirlU * 7.6f + time * 0.030f, swirlV * 6.2f - time * 0.020f));
+                    if (fragment > 0.001f)
+                    {
+                        r = Lerp(r, 245f, fragment * 0.72f);
+                        g = Lerp(g, 45f + greenBand * 210f, fragment);
+                        b = Lerp(b, 220f, fragment * 0.65f);
+                    }
+
                     float vignette = Math.Clamp(0.76f + (1f - dist * 0.80f) * 0.24f, 0.50f, 1f);
                     float blotch = 0.70f + 0.30f * SmoothStep(0.20f, 0.85f, field + texB * 0.08f);
-                    float phaseAlpha = 1f + cyanPhase * 0.42f + palePhase * 0.20f + voidPhase * 0.18f + redPhase * 0.48f;
-                    float alphaF = ((0.050f + 0.385f * overlayPower) * phaseAlpha * blotch + contour * 0.105f * overlayPower) * vignette;
-                    alphaF += datamosh * 0.070f + palePhase * 0.055f * overlayPower;
-                    alphaF = Math.Clamp(alphaF, 0f, 0.74f);
+                    float phaseAlpha = 1f + cyanPhase * 0.26f + voidPhase * 0.10f + redPhase * 0.32f;
+                    float alphaF = ((0.014f + 0.235f * overlayPower) * phaseAlpha * blotch + contour * 0.185f * overlayPower) * vignette;
+                    alphaF += broadBand * 0.105f * overlayPower + datamosh * 0.018f + palePhase * 0.010f * overlayPower +
+                              fragment * 0.18f * overlayPower + (cellRim + greenCore) * 0.18f * overlayPower;
+                    alphaF = Math.Clamp(alphaF, 0f, 0.70f);
 
                     r = Math.Clamp(r, 0f, 255f);
                     g = Math.Clamp(g, 0f, 255f);
