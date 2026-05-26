@@ -479,8 +479,12 @@ vec3 paletteGrade(vec3 c,float id,float n){
   else{shadow=vec3(.010,.006,.030);mid=vec3(.16,.07,.62);hi=vec3(.85,.82,1.00);}
   vec3 mapped=mix(shadow,mid,smoothstep(.025,.54,l));
   mapped=mix(mapped,hi,smoothstep(.46,1.0,l));
-  mapped+=spectrum(id*.173+n*.42+l*.30)*smoothstep(.18,.92,l)*.16;
-  return mix(mapped,c,.20);
+  float band=.5+.5*sin(n*6.2831853+id*.73+l*2.4);
+  vec3 localA=spectrum(id*.17+n*.62+l*.18);
+  vec3 localB=spectrum(id*.31-n*.38+l*.52+.27);
+  vec3 multi=mix(localA,localB,smoothstep(.24,.86,band));
+  mapped=mix(mapped,multi,(.18+.16*smoothstep(.12,.90,l)));
+  return mix(mapped,c,.34);
 }
 
 void main(){
@@ -601,12 +605,17 @@ void main(){
   vec3 paletteA=paletteGrade(col,paletteId,paletteNoise);
   vec3 paletteB=paletteGrade(col,paletteId+1.0,paletteNoise);
   col=mix(paletteA,paletteB,paletteCut);
-  col+=spectrum(paletteId*.21+paletteNoise+time*.035)*ridge(palettePhase,.82,.050)*.22*power;
+  float colorField=fbm(q2*1.35+vec2(time*.018+paletteId*.19,-time*.022-paletteId*.13));
+  vec3 lsdA=spectrum(colorField*.55+plasma*.21+marble*.17+paletteId*.09+time*.030);
+  vec3 lsdB=spectrum(colorField*.21-flow*.09+paletteId*.17+time*.018);
+  float colorMask=smoothstep(.16,.92,plasma+n2*.18)*(.22+.18*rainbowField+.12*kaleido);
+  col=mix(col,mix(lsdA,lsdB,.36+.24*sin(colorField*6.2831853)),colorMask*power);
+  col+=spectrum(paletteId*.21+paletteNoise+time*.035)*ridge(palettePhase,.82,.050)*.12*power;
 
   float l=dot(col,vec3(.299,.587,.114));
-  col=sat(col,2.02+.35*magenta+.22*emerald+.20*blueVein+.18*kaleido+.14*aurora+.18*rainbowField+.15*prism);
-  col=(col-.075)*1.38+.075;
-  col=pow(max(col,0.0),vec3(.82));
+  col=sat(col,1.54+.18*magenta+.14*emerald+.12*blueVein+.11*kaleido+.09*aurora+.12*rainbowField+.10*prism);
+  col=(col-.070)*1.22+.070;
+  col=pow(max(col,0.0),vec3(.88));
 
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
                       aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
