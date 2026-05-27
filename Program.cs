@@ -523,12 +523,13 @@ void main(){
   float fieldA=fbm(p*3.4+vec2(time*.08,-time*.05));
   float fieldB=fbm(rot(p,time*.06)*4.1+vec2(-time*.06,time*.07));
   vec2 spaceFlow=normalize(vec2(fieldA-.5,fieldB-.5)+vec2(.001,-.001));
-  float breath=sin(pr*12.0-time*2.1+fbm(panic*2.7+time*.04)*5.0);
-  float fold=sin(pr*9.0+fieldA*6.0-time*1.6);
-  q += spaceFlow*(.030+.020*fold)*chaosPower;
-  q += normalize(p+vec2(.001,-.001))*breath*.018*chaosPower;
-  q += vec2(sin(thought*3.1+time*1.8),cos(thought*2.7-time*1.4))*.016*chaosPower;
-  q += vec2(cos(pa*3.0+time*.8),sin(pa*4.0-time*.6))*.012*(1.0-smoothstep(.04,.72,pr))*chaosPower;
+  vec2 liquidDrift=vec2(
+    sin((p.y+fieldA*.42)*10.0+time*1.08+fieldB*4.0),
+    cos((p.x-fieldB*.38)*9.0-time*.93+fieldA*3.6));
+  float fold=sin((p.x*3.1+p.y*4.4)+fieldA*5.6-fieldB*3.1-time*1.45);
+  q += spaceFlow*(.034+.018*fold)*chaosPower;
+  q += liquidDrift*.022*chaosPower;
+  q += vec2(sin(thought*2.2+time*1.2),cos(thought*2.0-time*1.0))*.010*chaosPower;
 
   vec2 h1=vec2(.52*sin(time*.17), .32*cos(time*.13));
   vec2 h2=vec2(.62*sin(time*.11+2.1), .38*cos(time*.16+1.4));
@@ -600,16 +601,17 @@ void main(){
   vec2 shatter=rot(q2,time*.16);
   float chaosShard=ridge(sin((shatter.x*13.0-shatter.y*9.0+n3*4.7)+time*1.8)*.5+.5,.50,.210)*chaosPower;
   float chaosPulse=smoothstep(.88,1.0,fbm(q2*18.0+vec2(time*.55,-time*.48)+n1*2.0))*chaosPower;
-  float tunnel=ridge(sin(pr*24.0-pa*5.0+time*2.6+fbm(q2*4.0)*5.0)*.5+.5,.52,.180)*(1.0-smoothstep(.05,.96,pr))*chaosPower;
+  float liquidSurge=smoothstep(.42,.94,fbm(q2*2.55+vec2(time*.10,-time*.08)+n1*1.2))*smoothstep(.10,1.0,n2+n3*.25)*chaosPower;
+  float meltFold=ridge(marble+flow*.10+n2*.18,.54,.240)*chaosPower;
   float lensBody=clamp((l1*.68+l2*.58+l3*.48+noxusReach*.42)*chaos,0.0,1.0);
-  float lensRim=(ridge(r1,.20+.045*sin(time*.61),.095)*l1+
-                 ridge(r2,.18+.038*cos(time*.54),.082)*l2+
-                 ridge(r3,.16+.036*sin(time*.69+1.1),.075)*l3+
+  float lensRim=((1.0-smoothstep(.07,.34,r1))*l1*.42+
+                 (1.0-smoothstep(.06,.29,r2))*l2*.36+
+                 (1.0-smoothstep(.05,.25,r3))*l3*.30+
                  noxusLens*.42)*chaosPower;
-  float shearWarp=smoothstep(.46,.92,fbm(q2*3.7+vec2(time*.12,-time*.10)+n2*1.4))*lensBody*chaosPower;
-  float thoughtWeb=smoothstep(.62,1.0,fbm(shatter*7.5+vec2(time*.18,-time*.16)+n1*2.0))*smoothstep(.20,.95,n2+n3*.4)*chaosPower;
-  float softEcho=ridge(sin(pa*9.0+pr*15.0-time*1.9+n3*3.0)*.5+.5,.57,.220)*(1.0-smoothstep(.02,.85,pr))*chaosPower;
-  float chromaSlip=clamp((lensRim*.70+shearWarp*.55+softEcho*.35)*chaos,0.0,1.0);
+  float shearWarp=smoothstep(.42,.90,fbm(q2*3.7+vec2(time*.12,-time*.10)+n2*1.4))*max(lensBody,liquidSurge*.45)*chaosPower;
+  float thoughtWeb=smoothstep(.62,1.0,fbm(shatter*6.2+vec2(time*.16,-time*.14)+n1*1.6))*smoothstep(.20,.95,n2+n3*.4)*chaosPower;
+  float meltEcho=ridge(fbm(q2*5.8+vec2(time*.20,-time*.17)+fieldB*1.6),.58,.240)*chaosPower;
+  float chromaSlip=clamp((lensRim*.58+shearWarp*.58+meltEcho*.34+liquidSurge*.24)*chaos,0.0,1.0);
 
   vec3 base=mix(vec3(.006,.008,.026),vec3(.010,.028,.070),abyss*.64);
   vec3 col=base;
@@ -645,12 +647,13 @@ void main(){
   col=mix(col,1.0-col,(chaosShard*.10+thoughtWeb*.06)*chaos);
   col=mix(col,col*.54+spectrum(time*.10+n1*.25+fieldA*.30)*.74,lensBody*.18*chaos);
   col+=spectrum(time*.19+n2*.35+sa*.12)*chaosShard*.36;
-  col+=spectrum(pr*.22+pa*.05+time*.16)*tunnel*.46;
-  col+=mix(vec3(.08,.34,1.0),vec3(1.0,.12,.62),.5+.5*sin(time*1.2+pa*2.0))*shearWarp*.30;
+  col+=spectrum(fieldA*.31+n2*.22+time*.16)*liquidSurge*.46;
+  col+=spectrum(fieldB*.27+marble*.18-time*.11)*meltFold*.24;
+  col+=mix(vec3(.08,.34,1.0),vec3(1.0,.12,.62),.5+.5*sin(time*1.2+fieldA*5.0))*shearWarp*.32;
   col+=vec3(.05,.95,.72)*chaosPulse*.22;
   col+=vec3(.08,.58,1.0)*chromaSlip*.20 + vec3(1.0,.07,.55)*lensRim*.16;
-  col+=mix(vec3(.10,.32,1.0),vec3(1.0,.18,.70),.5+.5*sin(time+pa*2.0))*thoughtWeb*.16;
-  col+=spectrum(time*.07+softEcho+n1*.2)*softEcho*.20;
+  col+=mix(vec3(.10,.32,1.0),vec3(1.0,.18,.70),.5+.5*sin(time+fieldB*4.0))*thoughtWeb*.16;
+  col+=spectrum(time*.07+meltEcho+n1*.2)*meltEcho*.18;
 
   float paletteClock=time*(.155+chaos*.070);
   float palettePhase=fract(paletteClock);
@@ -663,9 +666,9 @@ void main(){
   float colorField=fbm(q2*1.35+vec2(time*.018+paletteId*.19,-time*.022-paletteId*.13));
   vec3 lsdA=spectrum(colorField*.55+plasma*.21+marble*.17+paletteId*.09+time*.030);
   vec3 lsdB=spectrum(colorField*.21-flow*.09+paletteId*.17+time*.018);
-  float colorMask=smoothstep(.16,.92,plasma+n2*.18)*(.22+.18*rainbowField+.12*kaleido+chaos*(.10+.14*tunnel+.10*thoughtWeb+.12*lensBody));
+  float colorMask=smoothstep(.16,.92,plasma+n2*.18)*(.22+.18*rainbowField+.12*kaleido+chaos*(.10+.14*liquidSurge+.10*thoughtWeb+.12*lensBody+.08*meltFold));
   col=mix(col,mix(lsdA,lsdB,.36+.24*sin(colorField*6.2831853)),colorMask*power);
-  col=mix(col,spectrum(colorField*.42+n3*.33+time*.11),chaos*(.14+.14*chaosShard+.14*chaosPulse+.16*tunnel+.10*thoughtWeb+.13*shearWarp)*power);
+  col=mix(col,spectrum(colorField*.42+n3*.33+time*.11),chaos*(.14+.10*chaosShard+.14*chaosPulse+.16*liquidSurge+.10*thoughtWeb+.13*shearWarp+.08*meltFold)*power);
   col+=spectrum(paletteId*.21+paletteNoise+time*.035)*ridge(palettePhase,.82,.050)*.12*power;
 
   float l=dot(col,vec3(.299,.587,.114));
@@ -676,12 +679,12 @@ void main(){
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
                       aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
                       rainbowField*.42+prism*.34+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38+
-                      chaosShard*.32+chaosPulse*.46+tunnel*.45+lensBody*.34+lensRim*.42+shearWarp*.36+thoughtWeb*.30+softEcho*.26,0.0,1.0);
+                      chaosShard*.24+chaosPulse*.46+liquidSurge*.44+meltFold*.30+lensBody*.34+lensRim*.30+shearWarp*.40+thoughtWeb*.30+meltEcho*.26,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
   float alpha=(veil+signal*.60)*power*(.70+.30*vign);
   alpha=clamp(alpha+(noxusLens*.16+noxusShock*.15+noxusDust*.22+
-              chaosShard*.08+chaosPulse*.12+tunnel*.12+lensBody*.12+lensRim*.11+shearWarp*.10+thoughtWeb*.08+softEcho*.08)*power,0.0,.90);
+              chaosShard*.05+chaosPulse*.12+liquidSurge*.12+meltFold*.08+lensBody*.12+lensRim*.07+shearWarp*.11+thoughtWeb*.08+meltEcho*.07)*power,0.0,.88);
   gl_FragColor=vec4(col,alpha);
 }
 `;
