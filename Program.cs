@@ -46,7 +46,32 @@ public sealed class OverlayForm : Form
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_FRAMECHANGED = 0x0020;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const int WM_DISPLAYCHANGE = 0x007E;
+    private const int WM_DPICHANGED = 0x02E0;
     private const int WM_HOTKEY = 0x0312;
+    private const uint SPI_SETCURSORS = 0x0057;
+    private const uint OCR_NORMAL = 32512;
+    private const uint OCR_IBEAM = 32513;
+    private const uint OCR_WAIT = 32514;
+    private const uint OCR_CROSS = 32515;
+    private const uint OCR_UP = 32516;
+    private const uint OCR_SIZENWSE = 32642;
+    private const uint OCR_SIZENESW = 32643;
+    private const uint OCR_SIZEWE = 32644;
+    private const uint OCR_SIZENS = 32645;
+    private const uint OCR_SIZEALL = 32646;
+    private const uint OCR_NO = 32648;
+    private const uint OCR_HAND = 32649;
+    private const uint OCR_APPSTARTING = 32650;
+    private const uint OCR_HELP = 32651;
+    private static readonly nint HWND_TOPMOST = new(-1);
+    private static readonly uint[] SystemCursorIds =
+    [
+        OCR_NORMAL, OCR_IBEAM, OCR_WAIT, OCR_CROSS, OCR_UP,
+        OCR_SIZENWSE, OCR_SIZENESW, OCR_SIZEWE, OCR_SIZENS,
+        OCR_SIZEALL, OCR_NO, OCR_HAND, OCR_APPSTARTING, OCR_HELP
+    ];
     private const int ULW_ALPHA = 0x02;
     private const int BI_RGB = 0;
     private const uint DIB_RGB_COLORS = 0;
@@ -97,6 +122,7 @@ public sealed class OverlayForm : Form
 
     private readonly System.Windows.Forms.Timer timer;
     private readonly System.Windows.Forms.Timer cursorTimer;
+    private readonly System.Windows.Forms.Timer overlayGuardTimer;
     private readonly System.Windows.Forms.Timer nilkStateTimer;
     private readonly Stopwatch stopwatch = Stopwatch.StartNew();
     private Random nilkRandom = new();
@@ -159,6 +185,7 @@ public sealed class OverlayForm : Form
     private string? gpuRendererError;
     private string? hintOverride;
     private int cursorHideCalls;
+    private bool systemCursorsSuppressed;
     private int lastCursorX = int.MinValue;
     private int lastCursorY = int.MinValue;
     private bool captureActive;
@@ -174,6 +201,7 @@ public sealed class OverlayForm : Form
     {
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
+        AutoScaleMode = AutoScaleMode.None;
         Bounds = desktopBounds;
         TopMost = true;
         ShowInTaskbar = false;
@@ -200,7 +228,18 @@ public sealed class OverlayForm : Form
             UpdateNativeCursorVisibility();
             PostCursorPosition();
         };
-        nilkStateTimer = new System.Windows.Forms.Timer { Interval = 33 };
+
+        // Alt+Tab and fullscreen-optimized windows can reshuffle z-order even
+        // while WinForms still believes TopMost is true.
+        overlayGuardTimer = new System.Windows.Forms.Timer { Interval = 250 };
+        overlayGuardTimer.Tick += (_, _) =>
+        {
+            if (captureActive)
+                EnsureCaptureOverlayPlacement();
+        };
+
+        // WebGL extrapolates time locally; 4 Hz avoids needless WebView2 IPC.
+        nilkStateTimer = new System.Windows.Forms.Timer { Interval = 250 };
         nilkStateTimer.Tick += (_, _) => UpdateNilkShaderState();
     }
 
@@ -252,8 +291,9 @@ public sealed class OverlayForm : Form
     {
         timer.Stop();
         cursorTimer.Stop();
+        overlayGuardTimer.Stop();
         nilkStateTimer.Stop();
-        RestoreNativeCursor();
+        RestoreSystemCursors();
         gpuView?.Dispose();
         gpuView = null;
         UnregisterOverlayHotkeys();
@@ -333,6 +373,17 @@ public sealed class OverlayForm : Form
         }
 
         base.WndProc(ref m);
+
+        if ((m.Msg == WM_DISPLAYCHANGE || m.Msg == WM_DPICHANGED) && IsHandleCreated)
+        {
+            BeginInvoke((Action)(() =>
+            {
+                if (captureActive)
+                    EnsureCaptureOverlayPlacement();
+                else
+                    Bounds = SystemInformation.VirtualScreen;
+            }));
+        }
     }
 
     private void ShowHint(string? message = null)
@@ -421,7 +472,9 @@ public sealed class OverlayForm : Form
             UpdateNativeCursorVisibility();
             PostCursorPosition();
             cursorTimer.Start();
+            overlayGuardTimer.Start();
             MakeClickThrough();
+            EnsureCaptureOverlayPlacement();
             if (previousForegroundWindow != 0)
                 _ = SetForegroundWindow(previousForegroundWindow);
         }
@@ -454,8 +507,9 @@ public sealed class OverlayForm : Form
             captureWidth = 0;
             captureHeight = 0;
             cursorTimer.Stop();
-            RestoreNativeCursor();
-            Bounds = desktopBounds;
+            overlayGuardTimer.Stop();
+            RestoreSystemCursors();
+            Bounds = SystemInformation.VirtualScreen;
             TopMost = true;
             MakeInteractive();
         }
@@ -482,7 +536,46 @@ public sealed class OverlayForm : Form
         Bounds = bestBounds;
         lastCursorX = int.MinValue;
         lastCursorY = int.MinValue;
+        EnsureCaptureOverlayPlacement();
+    }
+
+    private void EnsureCaptureOverlayPlacement()
+    {
+        if (!captureActive || !IsHandleCreated)
+            return;
+
+        Rectangle target = Bounds;
+        if (captureWidth > 0 && captureHeight > 0)
+        {
+            Rectangle bestBounds = SystemInformation.VirtualScreen;
+            double bestScore = DisplaySizeScore(bestBounds, captureWidth, captureHeight);
+            foreach (Screen screen in Screen.AllScreens)
+            {
+                double score = DisplaySizeScore(screen.Bounds, captureWidth, captureHeight);
+                if (score < bestScore)
+                {
+                    bestBounds = screen.Bounds;
+                    bestScore = score;
+                }
+            }
+            target = bestBounds;
+        }
+
+        if (Bounds != target)
+            Bounds = target;
+
         TopMost = true;
+        _ = SetWindowPos(
+            Handle,
+            HWND_TOPMOST,
+            target.Left,
+            target.Top,
+            Math.Max(1, target.Width),
+            Math.Max(1, target.Height),
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+        if (gpuView is not null && gpuView.Bounds != ClientRectangle)
+            gpuView.Bounds = ClientRectangle;
     }
 
     private static double DisplaySizeScore(Rectangle bounds, int captureWidth, int captureHeight)
@@ -526,14 +619,69 @@ public sealed class OverlayForm : Form
         if (!captureActive || !GetCursorPos(out NativePoint point))
         {
             if (!captureActive)
-                RestoreNativeCursor();
+                RestoreSystemCursors();
             return;
         }
 
         if (Bounds.Contains(point.X, point.Y))
-            KeepNativeCursorHidden();
+            SuppressSystemCursors();
         else
-            RestoreNativeCursor();
+            RestoreSystemCursors();
+    }
+
+    private void SuppressSystemCursors()
+    {
+        if (!systemCursorsSuppressed)
+        {
+            nint blankCursor = CreateTransparentCursor();
+            if (blankCursor != 0)
+            {
+                bool changedAny = false;
+                foreach (uint cursorId in SystemCursorIds)
+                {
+                    nint copy = CopyIcon(blankCursor);
+                    if (copy != 0 && SetSystemCursor(copy, cursorId))
+                        changedAny = true;
+                }
+
+                _ = DestroyCursor(blankCursor);
+                systemCursorsSuppressed = changedAny;
+            }
+        }
+
+        // Fallback for apps that use a non-system cursor handle.
+        KeepNativeCursorHidden();
+    }
+
+    private static nint CreateTransparentCursor()
+    {
+        const int width = 32;
+        const int height = 32;
+        byte[] andMask = Enumerable.Repeat((byte)0xFF, width * height / 8).ToArray();
+        byte[] xorMask = new byte[width * height / 8];
+
+        GCHandle andHandle = default;
+        GCHandle xorHandle = default;
+        try
+        {
+            andHandle = GCHandle.Alloc(andMask, GCHandleType.Pinned);
+            xorHandle = GCHandle.Alloc(xorMask, GCHandleType.Pinned);
+            return CreateCursor(
+                0,
+                0,
+                0,
+                width,
+                height,
+                andHandle.AddrOfPinnedObject(),
+                xorHandle.AddrOfPinnedObject());
+        }
+        finally
+        {
+            if (andHandle.IsAllocated)
+                andHandle.Free();
+            if (xorHandle.IsAllocated)
+                xorHandle.Free();
+        }
     }
 
     private void KeepNativeCursorHidden()
@@ -552,6 +700,17 @@ public sealed class OverlayForm : Form
             if (visibility < 0)
                 break;
         }
+    }
+
+    private void RestoreSystemCursors()
+    {
+        if (systemCursorsSuppressed)
+        {
+            _ = SystemParametersInfo(SPI_SETCURSORS, 0, 0, 0);
+            systemCursorsSuppressed = false;
+        }
+
+        RestoreNativeCursor();
     }
 
     private void RestoreNativeCursor()
@@ -706,7 +865,15 @@ public sealed class OverlayForm : Form
                 BuildGpuOverlayHtml(),
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-            CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            CoreWebView2EnvironmentOptions environmentOptions = new()
+            {
+                AdditionalBrowserArguments =
+                    "--disable-background-timer-throttling " +
+                    "--disable-renderer-backgrounding " +
+                    "--disable-backgrounding-occluded-windows " +
+                    "--disable-features=CalculateNativeWinOcclusion"
+            };
+            CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, environmentOptions);
             gpuView = new WebView2
             {
                 Dock = DockStyle.Fill,
@@ -1579,7 +1746,7 @@ void main(){
     const surface=track&&track.getSettings().displaySurface||'unknown';
     notifyHost(`capture-size:${screenVideo.videoWidth||0},${screenVideo.videoHeight||0},${surface}`);
   }
-  screenVideo.addEventListener('resize',reportCaptureSize);
+  screenVideo.addEventListener('resize',()=>{reportCaptureSize();resize();});
   window.chrome.webview.addEventListener('message',event=>{
     const message=event.data;
     if(message&&message.type==='cursor'){
@@ -1632,11 +1799,12 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
       activeStream=stream;
       track.addEventListener("ended",()=>{if(activeStream===stream)stopCapture("Screen sharing ended.");},{once:true});
       try{await track.applyConstraints({cursor:{exact:'never'}});}catch(_){}
-      const cursorSetting=track.getSettings().cursor;
-      nativeCursorMode=cursorSetting==='always'||cursorSetting==='motion'?cursorSetting:'never';
+      // Host-side cursor suppression leaves only the shader-rendered cursor.
+      nativeCursorMode='never';
       screenVideo.srcObject=stream;
       await screenVideo.play();
       screenCaptureActive=true;
+      resize();
       hasHistory=false;
       nilkFeedbackValid=false;
       frameCount=0;
@@ -1665,7 +1833,9 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     paused=!!p;
     const nextMode=Math.max(1,Math.min(8,Number(m)||4));
     if(nextMode!==currentMode&&nextMode>7.5)nilkFeedbackValid=false;
+    const modeChanged=nextMode!==currentMode;
     currentMode=nextMode;
+    if(modeChanged)resize();
     const label=modeNames[currentMode-1];
     hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk palette | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
   };
@@ -1677,7 +1847,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     const pixelCount=innerWidth*innerHeight*dpr*dpr;
     // The 2025 shader has temporal feedback and 12 blur taps, so cap its
     // internal pixel count while retaining full-screen coverage.
-    const pixelBudget=currentMode>7.5?1800000:2500000;
+    const pixelBudget=currentMode>7.5?1350000:2500000;
     dpr*=Math.min(1,Math.sqrt(pixelBudget/Math.max(1,pixelCount)));
     const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
@@ -1685,7 +1855,14 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
   }
   addEventListener('resize',resize,{passive:true});
   function frame(now){
-    resize();
+    // Capture arrives at <=60 fps. Do not render the same source frame two or
+    // three times on 120/144/165 Hz displays: that wastes GPU and makes the
+    // temporal feedback visibly stutter.
+    if(screenCaptureActive&&screenVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA&&screenVideo.currentTime===lastVideoTime){
+      requestAnimationFrame(frame);
+      return;
+    }
+
     let uploadedVideoFrame=false;
     const dt=Math.min((now-last)*.001,.033); last=now;
     if(!paused) shaderTime+=dt;
@@ -1748,6 +1925,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     }
     requestAnimationFrame(frame);
   }
+  resize();
   requestAnimationFrame(frame);
 })();
 </script>
@@ -3202,6 +3380,21 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
     [DllImport("user32.dll")]
     private static extern int ShowCursor(bool bShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint CreateCursor(nint hInst, int xHotSpot, int yHotSpot, int nWidth, int nHeight, nint pvANDPlane, nint pvXORPlane);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint CopyIcon(nint hIcon);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetSystemCursor(nint hcur, uint id);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyCursor(nint hCursor);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, nint pvParam, uint fWinIni);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint GetForegroundWindow();
