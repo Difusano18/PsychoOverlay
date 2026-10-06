@@ -343,10 +343,10 @@ public sealed class OverlayForm : Form
                     SetEffectMode(EffectMode.NilkStage1);
                     break;
                 case HotkeyNilkStage2Mode:
-                    SetEffectMode(EffectMode.NilkStage1Stage2);
+                    SetEffectMode(EffectMode.NilkStage2);
                     break;
                 case HotkeyNilkStage3Mode:
-                    SetEffectMode(EffectMode.NilkStage1Stage3);
+                    SetEffectMode(EffectMode.NilkStage3);
                     break;
                 case HotkeyNilkNextPalette:
                     StepNilkPalette(1);
@@ -2838,8 +2838,8 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
             EffectMode.FullTrip => "FULL TRIP",
             EffectMode.Chaos => "CHAOS",
             EffectMode.NilkStage1 => "NILK STAGE I",
-            EffectMode.NilkStage1Stage2 => "NILK STAGE II",
-            EffectMode.NilkStage1Stage3 => "NILK STAGE III",
+            EffectMode.NilkStage2 => "NILK STAGE II",
+            EffectMode.NilkStage3 => "NILK STAGE III",
             _ => "UNKNOWN"
         };
     }
