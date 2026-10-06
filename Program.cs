@@ -768,7 +768,17 @@ public sealed class OverlayForm : Form
         {
             CommentHandling = JsonCommentHandling.Skip
         });
+        // Keep the original palette file intact, but exclude the two palettes
+        // that introduce the pale pink / hot-magenta wash in the desktop effect.
+        // The Nilk motion, feedback and palette interpolation remain unchanged.
+        HashSet<string> excludedPalettes = new(StringComparer.Ordinal)
+        {
+            "TransFlag",
+            "Unpleasant"
+        };
+
         float[][][] palettes = document.RootElement.EnumerateObject()
+            .Where(palette => !excludedPalettes.Contains(palette.Name))
             .Select(palette => palette.Value.EnumerateArray()
                 .Select(color => color.GetString()!.Split(',')
                     .Select(component => float.Parse(component.Trim(), System.Globalization.CultureInfo.InvariantCulture))
