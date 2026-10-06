@@ -3,6 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -27,14 +28,22 @@ public sealed class OverlayForm : Form
         TextureTrip = 2,
         GlyphGlitch = 3,
         FullTrip = 4,
-        Chaos = 5
+        Chaos = 5,
+        Nilk = 6
     }
 
     private const int WS_EX_TRANSPARENT = 0x20;
     private const int WS_EX_LAYERED = 0x80000;
     private const int WS_EX_TOOLWINDOW = 0x80;
     private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int WDA_EXCLUDEFROMCAPTURE = 0x11;
+    private const uint CURSOR_SHOWING = 0x00000001;
     private const int GWL_EXSTYLE = -20;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_FRAMECHANGED = 0x0020;
     private const int WM_HOTKEY = 0x0312;
     private const int ULW_ALPHA = 0x02;
     private const int BI_RGB = 0;
@@ -44,8 +53,11 @@ public sealed class OverlayForm : Form
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_NOREPEAT = 0x4000;
-    private const float NilkCycleSeconds = 96f;
+    private const float ModePaletteCycleSeconds = 96f;
     private const float NilkDatamoshIntensity = 0.51f;
+    private const double NilkTotalDurationSeconds = 60d * 60d;
+    private const double NilkPaletteBaseShuffleSeconds = 2d * 60d;
+    private static readonly float[][][] NilkPalettes = LoadNilkPalettes();
 
     private const int HotkeyIntensityUp = 101;
     private const int HotkeyIntensityDown = 102;
@@ -67,12 +79,19 @@ public sealed class OverlayForm : Form
     private const int HotkeyExitF = 118;
     private const int HotkeyNextModeF = 119;
     private const int HotkeyPrevModeF = 120;
+    private const int HotkeyChaosMode = 121;
+    private const int HotkeyToggleScreenCapture = 122;
+    private const int HotkeyNilkMode = 123;
 
     private static readonly char[] GlyphBank =
         "░▒▓█▓▒░ ᚠᚢᚦᚨᚱᚲ ΨΩΔΛΣΞ ЖЙФЮЯ 目電幻夢零壱弐参 NILK VOID COSMOS LSD 0123456789 @#$%&*<>/\\".ToCharArray();
 
     private readonly System.Windows.Forms.Timer timer;
+    private readonly System.Windows.Forms.Timer cursorTimer;
+    private readonly System.Windows.Forms.Timer nilkStateTimer;
     private readonly Stopwatch stopwatch = Stopwatch.StartNew();
+    private readonly Random nilkRandom = new();
+    private readonly Rectangle desktopBounds = SystemInformation.VirtualScreen;
     private readonly Color[] nilkPalette =
     [
         Color.FromArgb(255, 23, 8, 52),
@@ -126,12 +145,26 @@ public sealed class OverlayForm : Form
     private bool paused;
     private bool needsFrame = true;
     private bool gpuRendererActive;
+    private string? gpuRendererError;
+    private string? hintOverride;
+    private int cursorHideCalls;
+    private int lastCursorX = int.MinValue;
+    private int lastCursorY = int.MinValue;
+    private bool captureActive;
+    private double nilkElapsedSeconds;
+    private double nilkShuffleCountdownSeconds;
+    private int nilkPaletteIndex = -1;
+    private int lastPostedNilkPaletteIndex = -1;
+    private long nilkLastUpdateTimestamp;
+    private int captureWidth;
+    private int captureHeight;
+    private nint previousForegroundWindow;
 
     public OverlayForm()
     {
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
-        Bounds = SystemInformation.VirtualScreen;
+        Bounds = desktopBounds;
         TopMost = true;
         ShowInTaskbar = false;
         BackColor = Color.Black;
@@ -151,6 +184,14 @@ public sealed class OverlayForm : Form
         // The renderer is intentionally low-res; 16 ms lets Windows present as fast as it can.
         timer = new System.Windows.Forms.Timer { Interval = 16 };
         timer.Tick += (_, _) => RenderTick();
+        cursorTimer = new System.Windows.Forms.Timer { Interval = 16 };
+        cursorTimer.Tick += (_, _) =>
+        {
+            UpdateNativeCursorVisibility();
+            PostCursorPosition();
+        };
+        nilkStateTimer = new System.Windows.Forms.Timer { Interval = 33 };
+        nilkStateTimer.Tick += (_, _) => UpdateNilkShaderState();
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -169,15 +210,24 @@ public sealed class OverlayForm : Form
     {
         base.OnHandleCreated(e);
         MakeClickThrough();
+        _ = SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
         RegisterOverlayHotkeys();
     }
 
     protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        if (await TryStartGpuRendererAsync())
-            return;
+        previousForegroundWindow = GetForegroundWindow();
+        if (previousForegroundWindow == Handle)
+            previousForegroundWindow = 0;
 
+        if (await TryStartGpuRendererAsync())
+        {
+            MakeInteractive();
+            return;
+        }
+
+        ShowHint($"Fullscreen Nilk needs WebView2 ({gpuRendererError ?? "initialization failed"}).");
         StartCpuRenderer();
     }
 
@@ -191,6 +241,9 @@ public sealed class OverlayForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         timer.Stop();
+        cursorTimer.Stop();
+        nilkStateTimer.Stop();
+        RestoreNativeCursor();
         gpuView?.Dispose();
         gpuView = null;
         UnregisterOverlayHotkeys();
@@ -207,26 +260,48 @@ public sealed class OverlayForm : Form
             {
                 case HotkeyIntensityUp:
                 case HotkeyIntensityUpF:
-                    targetIntensity = Math.Clamp(targetIntensity + 0.06f, 0f, 0.72f);
+                    targetIntensity = Math.Clamp(targetIntensity + 0.06f, 0f, (int)mode >= (int)EffectMode.Nilk ? 1f : 0.72f);
                     ShowHint();
                     break;
                 case HotkeyIntensityDown:
                 case HotkeyIntensityDownF:
-                    targetIntensity = Math.Clamp(targetIntensity - 0.06f, 0f, 0.72f);
+                    targetIntensity = Math.Clamp(targetIntensity - 0.06f, 0f, (int)mode >= (int)EffectMode.Nilk ? 1f : 0.72f);
                     ShowHint();
                     break;
                 case HotkeyTogglePause:
                 case HotkeyTogglePauseF:
                     paused = !paused;
+                    nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
                     ShowHint();
+                    break;
+                case HotkeyFlowMode:
+                    SetEffectMode(EffectMode.Flow);
+                    break;
+                case HotkeyTextureMode:
+                    SetEffectMode(EffectMode.TextureTrip);
+                    break;
+                case HotkeyGlyphMode:
+                    SetEffectMode(EffectMode.GlyphGlitch);
+                    break;
+                case HotkeyFullMode:
+                    SetEffectMode(EffectMode.FullTrip);
+                    break;
+                case HotkeyChaosMode:
+                    SetEffectMode(EffectMode.Chaos);
+                    break;
+                case HotkeyNilkMode:
+                    SetEffectMode(EffectMode.Nilk);
                     break;
                 case HotkeyPrevMode:
                 case HotkeyPrevModeF:
-                    SetEffectMode(EffectMode.FullTrip);
+                    CycleEffectMode(-1);
                     break;
                 case HotkeyNextMode:
                 case HotkeyNextModeF:
-                    SetEffectMode(EffectMode.Chaos);
+                    CycleEffectMode(1);
+                    break;
+                case HotkeyToggleScreenCapture:
+                    ToggleScreenCapture();
                     break;
                 case HotkeyExit:
                 case HotkeyExitF:
@@ -238,8 +313,9 @@ public sealed class OverlayForm : Form
         base.WndProc(ref m);
     }
 
-    private void ShowHint()
+    private void ShowHint(string? message = null)
     {
+        hintOverride = message;
         hintSeconds = 2.6f;
         needsFrame = true;
         PushGpuState();
@@ -247,8 +323,211 @@ public sealed class OverlayForm : Form
 
     private void SetEffectMode(EffectMode nextMode)
     {
+        if ((int)nextMode >= (int)EffectMode.Nilk && !gpuRendererActive && gpuRendererError is not null)
+        {
+            ShowHint($"Fullscreen Nilk needs WebView2 ({gpuRendererError}).");
+            return;
+        }
+
+        if ((int)nextMode >= (int)EffectMode.Nilk && (int)mode < (int)EffectMode.Nilk)
+            targetIntensity = 1f;
+        else if ((int)nextMode < (int)EffectMode.Nilk && (int)mode >= (int)EffectMode.Nilk)
+            targetIntensity = 0.52f;
+
+        if (mode != nextMode)
+        {
+            if (nextMode == EffectMode.Nilk)
+                StartNilkRun();
+            else if (mode == EffectMode.Nilk)
+                StopNilkRun();
+        }
+
         mode = nextMode;
         ShowHint();
+    }
+
+    private void ToggleScreenCapture()
+    {
+        if (gpuView?.CoreWebView2 is null)
+            return;
+
+        nint foreground = GetForegroundWindow();
+        if (foreground != 0 && foreground != Handle)
+            previousForegroundWindow = foreground;
+
+        TopMost = true;
+        MakeInteractive();
+        _ = gpuView.CoreWebView2.ExecuteScriptAsync("window.toggleScreenCapture && window.toggleScreenCapture()");
+    }
+
+    private void HandleGpuWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        string message;
+        try
+        {
+            message = e.TryGetWebMessageAsString();
+        }
+        catch
+        {
+            return;
+        }
+
+        if (message == "capture-started")
+        {
+            captureActive = true;
+            TopMost = true;
+            lastCursorX = int.MinValue;
+            lastCursorY = int.MinValue;
+            UpdateNativeCursorVisibility();
+            PostCursorPosition();
+            cursorTimer.Start();
+            MakeClickThrough();
+            if (previousForegroundWindow != 0)
+                _ = SetForegroundWindow(previousForegroundWindow);
+        }
+        else if (message.StartsWith("capture-size:", StringComparison.Ordinal))
+        {
+            string[] dimensions = message["capture-size:".Length..].Split(',');
+            if (dimensions.Length >= 2 &&
+                int.TryParse(dimensions[0], out int width) &&
+                int.TryParse(dimensions[1], out int height))
+            {
+                captureWidth = width;
+                captureHeight = height;
+                string surface = dimensions.Length >= 3 ? dimensions[2] : "unknown";
+                bool isNotMonitor = surface == "window" || surface == "browser" ||
+                                    (surface == "unknown" && !MatchesMonitorSize(width, height));
+                if (isNotMonitor)
+                {
+                    _ = gpuView?.CoreWebView2?.ExecuteScriptAsync(
+                        "window.rejectNonMonitorCapture && window.rejectNonMonitorCapture()");
+                    return;
+                }
+
+                MatchCaptureToDisplay(width, height);
+                PostCursorPosition();
+            }
+        }
+        else if (message.StartsWith("capture-", StringComparison.Ordinal))
+        {
+            captureActive = false;
+            captureWidth = 0;
+            captureHeight = 0;
+            cursorTimer.Stop();
+            RestoreNativeCursor();
+            Bounds = desktopBounds;
+            TopMost = true;
+            MakeInteractive();
+        }
+    }
+
+    private void MatchCaptureToDisplay(int captureWidth, int captureHeight)
+    {
+        if (captureWidth <= 0 || captureHeight <= 0)
+            return;
+
+        Rectangle bestBounds = desktopBounds;
+        double bestScore = DisplaySizeScore(desktopBounds, captureWidth, captureHeight);
+        foreach (Screen screen in Screen.AllScreens)
+        {
+            Rectangle candidate = screen.Bounds;
+            double score = DisplaySizeScore(candidate, captureWidth, captureHeight);
+            if (score < bestScore)
+            {
+                bestBounds = candidate;
+                bestScore = score;
+            }
+        }
+
+        Bounds = bestBounds;
+        lastCursorX = int.MinValue;
+        lastCursorY = int.MinValue;
+        TopMost = true;
+    }
+
+    private static double DisplaySizeScore(Rectangle bounds, int captureWidth, int captureHeight)
+    {
+        double aspectDelta = Math.Abs(Math.Log((bounds.Width / (double)bounds.Height) / (captureWidth / (double)captureHeight)));
+        double scaleDelta = Math.Abs(Math.Log(bounds.Width / (double)captureWidth)) +
+                            Math.Abs(Math.Log(bounds.Height / (double)captureHeight));
+        return aspectDelta * 100d + scaleDelta;
+    }
+
+    private bool MatchesMonitorSize(int captureWidth, int captureHeight)
+    {
+        double bestScore = DisplaySizeScore(desktopBounds, captureWidth, captureHeight);
+        foreach (Screen screen in Screen.AllScreens)
+            bestScore = Math.Min(bestScore, DisplaySizeScore(screen.Bounds, captureWidth, captureHeight));
+        return bestScore <= 0.45d;
+    }
+
+    private void PostCursorPosition()
+    {
+        if (gpuView?.CoreWebView2 is null || !GetCursorPos(out NativePoint point))
+            return;
+
+        if (point.X == lastCursorX && point.Y == lastCursorY)
+            return;
+
+        lastCursorX = point.X;
+        lastCursorY = point.Y;
+        float u = (point.X - Bounds.Left) / (float)Math.Max(Bounds.Width, 1);
+        float v = 1f - (point.Y - Bounds.Top) / (float)Math.Max(Bounds.Height, 1);
+        bool visible = u >= 0f && u <= 1f && v >= 0f && v <= 1f;
+        string uValue = u.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string vValue = v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string visibleValue = visible ? "true" : "false";
+        gpuView.CoreWebView2.PostWebMessageAsJson(
+            $"{{\"type\":\"cursor\",\"u\":{uValue},\"v\":{vValue},\"visible\":{visibleValue}}}");
+    }
+
+    private void UpdateNativeCursorVisibility()
+    {
+        if (!captureActive || !GetCursorPos(out NativePoint point))
+        {
+            if (!captureActive)
+                RestoreNativeCursor();
+            return;
+        }
+
+        if (Bounds.Contains(point.X, point.Y))
+            KeepNativeCursorHidden();
+        else
+            RestoreNativeCursor();
+    }
+
+    private void KeepNativeCursorHidden()
+    {
+        CursorInfo cursorInfo = new() { Size = (uint)Marshal.SizeOf<CursorInfo>() };
+        if (!GetCursorInfo(ref cursorInfo))
+            return;
+
+        if ((cursorInfo.Flags & CURSOR_SHOWING) == 0)
+            return;
+
+        for (int attempt = 0; attempt < 32; attempt++)
+        {
+            int visibility = ShowCursor(false);
+            cursorHideCalls++;
+            if (visibility < 0)
+                break;
+        }
+    }
+
+    private void RestoreNativeCursor()
+    {
+        while (cursorHideCalls > 0)
+        {
+            ShowCursor(true);
+            cursorHideCalls--;
+        }
+    }
+
+    private void CycleEffectMode(int direction)
+    {
+        const int modeCount = 6;
+        int next = ((int)mode - 1 + direction + modeCount) % modeCount + 1;
+        SetEffectMode((EffectMode)next);
     }
 
     private void UpdateTimerInterval()
@@ -363,7 +642,7 @@ public sealed class OverlayForm : Form
 
     private void RenderLsdOverlay(Graphics g, int w, int h)
     {
-        if (intensity > 0.004f)
+        if (intensity > 0.004f && mode != EffectMode.Nilk)
         {
             float p = LsdPower;
             RenderFullTripLowRes(g, w, h, p);
@@ -377,6 +656,16 @@ public sealed class OverlayForm : Form
         try
         {
             string userDataFolder = Path.Combine(Path.GetTempPath(), "PsychoOverlay_WebView2");
+            string overlayContentFolder = Path.Combine(userDataFolder, "overlay-content");
+            Directory.CreateDirectory(overlayContentFolder);
+            string nilkNoiseAsset = Path.Combine(AppContext.BaseDirectory, "Assets", "Textures", "Extra", "Noise", "NilkPerlinNoise.png");
+            if (File.Exists(nilkNoiseAsset))
+                File.Copy(nilkNoiseAsset, Path.Combine(overlayContentFolder, "nilk-noise.png"), overwrite: true);
+            await File.WriteAllTextAsync(
+                Path.Combine(overlayContentFolder, "overlay.html"),
+                BuildGpuOverlayHtml(),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
             CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
             gpuView = new WebView2
             {
@@ -388,18 +677,36 @@ public sealed class OverlayForm : Form
             Controls.Add(gpuView);
             gpuView.BringToFront();
             await gpuView.EnsureCoreWebView2Async(environment);
-            gpuView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            gpuView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            gpuView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-            gpuView.CoreWebView2.Settings.IsZoomControlEnabled = false;
-            gpuView.NavigateToString(BuildGpuOverlayHtml());
+            CoreWebView2 core = gpuView.CoreWebView2;
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.Settings.AreDevToolsEnabled = false;
+            core.Settings.IsStatusBarEnabled = false;
+            core.Settings.IsZoomControlEnabled = false;
+            core.Settings.IsWebMessageEnabled = true;
+            core.SetVirtualHostNameToFolderMapping(
+                "psychooverlay.local",
+                overlayContentFolder,
+                CoreWebView2HostResourceAccessKind.DenyCors);
+            core.WebMessageReceived += HandleGpuWebMessage;
+            core.NavigationCompleted += (_, args) =>
+            {
+                if (!args.IsSuccess)
+                    return;
+
+                // A Nilk state can be posted while the document is still loading.
+                // Force the palette to be sent again once its WebGL listener exists.
+                lastPostedNilkPaletteIndex = -1;
+                PushGpuState();
+            };
             gpuRendererActive = true;
+            gpuView.Source = new Uri("https://psychooverlay.local/overlay.html");
             PushGpuState();
             return true;
         }
-        catch
+        catch (Exception ex)
         {
             gpuRendererActive = false;
+            gpuRendererError = ex.GetType().Name;
             if (gpuView is not null)
             {
                 Controls.Remove(gpuView);
@@ -411,6 +718,123 @@ public sealed class OverlayForm : Form
         }
     }
 
+    private static float[][][] LoadNilkPalettes()
+    {
+        using Stream? stream = typeof(OverlayForm).Assembly.GetManifestResourceStream("PsychoOverlay.NoxusReferences.NilkShaderPalettes.json");
+        if (stream is null)
+            throw new InvalidOperationException("The original Nilk palette resource is missing from the build.");
+
+        using JsonDocument document = JsonDocument.Parse(stream, new JsonDocumentOptions
+        {
+            CommentHandling = JsonCommentHandling.Skip
+        });
+        float[][][] palettes = document.RootElement.EnumerateObject()
+            .Select(palette => palette.Value.EnumerateArray()
+                .Select(color => color.GetString()!.Split(',')
+                    .Select(component => float.Parse(component.Trim(), System.Globalization.CultureInfo.InvariantCulture))
+                    .ToArray())
+                .ToArray())
+            .ToArray();
+        if (palettes.Length == 0 || palettes.Any(palette => palette.Length != 8 || palette.Any(color => color.Length != 3)))
+            throw new InvalidOperationException("Nilk palettes must each contain eight RGB colors.");
+        return palettes;
+    }
+
+    private void StartNilkRun()
+    {
+        nilkElapsedSeconds = 0d;
+        nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
+        lastPostedNilkPaletteIndex = -1;
+        nilkShuffleCountdownSeconds = 0d;
+        nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
+        nilkStateTimer.Start();
+        PostNilkShaderState();
+    }
+
+    private void StopNilkRun()
+    {
+        UpdateNilkShaderState();
+        nilkStateTimer.Stop();
+        nilkElapsedSeconds = 0d;
+        nilkShuffleCountdownSeconds = 0d;
+        nilkPaletteIndex = -1;
+        lastPostedNilkPaletteIndex = -1;
+        nilkLastUpdateTimestamp = 0;
+    }
+
+    private void UpdateNilkShaderState()
+    {
+        long now = Stopwatch.GetTimestamp();
+        if (nilkLastUpdateTimestamp != 0 && !paused)
+        {
+            double dt = (now - nilkLastUpdateTimestamp) / (double)Stopwatch.Frequency;
+            nilkElapsedSeconds = Math.Min(NilkTotalDurationSeconds, nilkElapsedSeconds + Math.Max(0d, dt));
+            nilkShuffleCountdownSeconds -= Math.Max(0d, dt);
+        }
+        nilkLastUpdateTimestamp = now;
+
+        if (nilkPaletteIndex < 0)
+            nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
+
+        if (nilkShuffleCountdownSeconds <= 0d)
+        {
+            nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
+            nilkShuffleCountdownSeconds = NextNilkPaletteIntervalSeconds();
+        }
+
+        if (nilkElapsedSeconds >= NilkTotalDurationSeconds)
+            nilkStateTimer.Stop();
+
+        PostNilkShaderState();
+    }
+
+    private double NextNilkPaletteIntervalSeconds()
+    {
+        double duration = NilkPaletteBaseShuffleSeconds;
+        if (nilkRandom.Next(3) == 0)
+            duration = 60d;
+        if (nilkRandom.Next(6) == 0)
+            duration = 24d;
+        if (nilkRandom.Next(9) == 0)
+            duration = 3d;
+        if (nilkRandom.Next(15) == 0)
+            duration = 0.6d;
+        return duration;
+    }
+
+    private float NilkIntensity
+    {
+        get
+        {
+            float completion = (float)Math.Clamp(nilkElapsedSeconds / NilkTotalDurationSeconds, 0d, 1d);
+            if (completion >= 1f)
+                return 0f;
+            if (completion < 0.3f)
+                return completion / 0.3f;
+            if (completion <= 0.9f)
+                return 1f;
+            return 1f - (completion - 0.9f) / 0.1f;
+        }
+    }
+
+    private void PostNilkShaderState()
+    {
+        if (!gpuRendererActive || gpuView?.CoreWebView2 is null || nilkPaletteIndex < 0)
+            return;
+
+        float[][]? palette = nilkPaletteIndex != lastPostedNilkPaletteIndex ? NilkPalettes[nilkPaletteIndex] : null;
+        lastPostedNilkPaletteIndex = nilkPaletteIndex;
+        string message = JsonSerializer.Serialize(new
+        {
+            type = "nilk-state",
+            globalTime = (float)nilkElapsedSeconds,
+            intensity = NilkIntensity,
+            palette,
+            running = mode == EffectMode.Nilk && !paused && nilkElapsedSeconds < NilkTotalDurationSeconds
+        });
+        gpuView.CoreWebView2.PostWebMessageAsJson(message);
+    }
+
     private void PushGpuState()
     {
         if (!gpuRendererActive || gpuView?.CoreWebView2 is null)
@@ -419,6 +843,7 @@ public sealed class OverlayForm : Form
         string intensityValue = targetIntensity.ToString(System.Globalization.CultureInfo.InvariantCulture);
         string pausedValue = paused ? "true" : "false";
         _ = gpuView.CoreWebView2.ExecuteScriptAsync($"window.setOverlayState && window.setOverlayState({intensityValue}, {pausedValue}, {(int)mode});");
+        PostNilkShaderState();
     }
 
     private static string BuildGpuOverlayHtml()
@@ -431,15 +856,37 @@ public sealed class OverlayForm : Form
 <style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;}
 canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:transparent;}
-#hud{position:fixed;left:12px;bottom:10px;font:12px Segoe UI,Arial,sans-serif;color:rgba(218,252,255,.82);background:rgba(4,3,17,.34);padding:5px 8px;border-radius:7px;pointer-events:none;user-select:none}
+#hud{display:none;position:fixed;left:12px;bottom:10px;font:12px Segoe UI,Arial,sans-serif;color:rgba(218,252,255,.82);background:rgba(4,3,17,.34);padding:5px 8px;border-radius:7px;pointer-events:none;user-select:none}
+#capturePanel{position:fixed;z-index:5;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100vw - 40px));box-sizing:border-box;padding:22px 24px;border:1px solid rgba(166,116,255,.66);border-radius:16px;background:rgba(10,7,24,.94);box-shadow:0 18px 70px rgba(0,0,0,.65),0 0 36px rgba(119,47,255,.24);color:#eee9ff;pointer-events:auto;}
+#capturePanel h1{margin:0 0 9px;font-size:20px;font-weight:650;letter-spacing:.02em;color:#fff;}
+#capturePanel p{margin:0 0 16px;font-size:13px;line-height:1.5;color:#c8bfdf;}
+#capturePanel button{border:0;border-radius:9px;padding:10px 14px;background:linear-gradient(110deg,#8f42ff,#e13fcb);color:#fff;font:600 13px Segoe UI,Arial,sans-serif;cursor:pointer;}
+#capturePanel button:disabled{opacity:.55;cursor:wait;}
+#capturePanel small{display:block;margin-top:12px;font-size:11px;line-height:1.45;color:#aaa0c4;}
+#captureStatus{min-height:18px;margin:12px 0 0!important;color:#d9c8ff!important;}
+video{position:fixed;width:1px;height:1px;left:-10px;top:-10px;opacity:0;pointer-events:none;}
+body.capture-active{cursor:none!important;}
+body.capture-active *{cursor:none!important;}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas><div id="hud">Num1 NILK | Num2 CHAOS | Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit</div>
+<div id="capturePanel">
+  <h1>Desktop distortion</h1>
+  <p>Choose an entire monitor for the full-screen Nilk effect. The processed image keeps updating while you Alt+Tab.</p>
+  <button id="startCapture" type="button">Choose monitor</button>
+  <p id="captureStatus" aria-live="polite">Windows must explicitly allow screen capture.</p>
+  <small>Press Ctrl+Alt+R to stop sharing. Capture permission ends when sharing stops.</small>
+</div>
+<video id="screenVideo" autoplay muted playsinline></video>
+<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-6 | Arrows: modes | Up/Down: strength | Space: pause | Esc: exit</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
   const hud = document.getElementById('hud');
+  const screenVideo = document.getElementById('screenVideo');
+  const capturePanel = document.getElementById('capturePanel');
+  const startCaptureButton = document.getElementById('startCapture');
+  const captureStatus = document.getElementById('captureStatus');
   const gl = canvas.getContext('webgl', {alpha:true, premultipliedAlpha:false, antialias:false, depth:false, stencil:false, preserveDrawingBuffer:false, powerPreference:'high-performance'});
   if (!gl) { hud.textContent = 'WebGL unavailable'; return; }
 
@@ -454,6 +901,18 @@ uniform vec2 r;
 uniform float t;
 uniform float intensity;
 uniform float mode;
+uniform sampler2D screenFrame;
+uniform sampler2D previousScreenFrame;
+uniform sampler2D nilkNoiseTexture;
+uniform sampler2D nilkOverlayTexture;
+uniform sampler2D nilkPaletteTexture;
+uniform float captureActive;
+uniform float historyValid;
+uniform float nilkGlobalTime;
+uniform float nilkIntensity;
+uniform vec2 cursorUv;
+uniform vec2 frameSize;
+uniform float cursorVisible;
 varying vec2 v;
 
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
@@ -504,17 +963,157 @@ vec3 paletteGrade(vec3 c,float id,float n){
   return mix(mapped,c,.34);
 }
 
+float cross2(vec2 a,vec2 b){return a.x*b.y-a.y*b.x;}
+float triangleMask(vec2 p,vec2 a,vec2 b,vec2 c){
+  float ab=cross2(b-a,p-a), bc=cross2(c-b,p-b), ca=cross2(a-c,p-c);
+  float positive=step(0.0,ab)*step(0.0,bc)*step(0.0,ca);
+  float negative=step(ab,0.0)*step(bc,0.0)*step(ca,0.0);
+  return max(positive,negative);
+}
+float cursorShape(vec2 p){
+  float head=triangleMask(p,vec2(0.0,0.0),vec2(0.0,-22.0),vec2(15.0,-7.0));
+  float stemA=triangleMask(p,vec2(4.0,-9.0),vec2(10.0,-14.0),vec2(17.0,-5.0));
+  float stemB=triangleMask(p,vec2(4.0,-9.0),vec2(17.0,-5.0),vec2(11.0,1.0));
+  return max(head,max(stemA,stemB));
+}
+vec3 nilkPalette(float value){
+  float index=clamp(value*6.0,0.0,6.0);
+  float startIndex=floor(index);
+  vec3 a=texture2D(nilkPaletteTexture,vec2((startIndex+.5)/8.0,.5)).rgb;
+  vec3 b=texture2D(nilkPaletteTexture,vec2((startIndex+1.5)/8.0,.5)).rgb;
+  return mix(a,b,fract(value*6.0));
+}
+
 void main(){
   vec2 uv=gl_FragCoord.xy/r;
   vec2 p=(uv-.5)*vec2(r.x/r.y,1.0);
-  float power=clamp(intensity*1.55,0.0,1.0);
+  if(captureActive>.5){
+    float captureTime=t*.72;
+    float aspect=r.x/max(r.y,1.0);
+    float strength=clamp(intensity*1.18,0.0,.92);
+    vec2 sampleUv=uv;
+    vec3 screenColor=vec3(0.0);
+    float colorBlend=0.0;
+    float colorPhase=0.0;
+    if(mode>5.5){
+      float opacity=1.0;
+      float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
+      float effective=nilkIntensity*smoothOpacity;
+      float globalTime=nilkGlobalTime;
+      vec2 unmodifiedCoords=uv;
+      vec2 coords=uv;
+      float offsetTime=globalTime*.7;
+      coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05;
+      coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05;
+      vec4 baseColor=texture2D(screenFrame,coords);
+      coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
+                 sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
+
+      vec4 distortedScreenColor=texture2D(screenFrame,coords);
+      vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
+      float blendNoise=texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
+                       texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
+      float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
+      vec4 color=mix(distortedScreenColor,previousScreenColor,blendInterpolant*pow(effective,2.5)*historyValid);
+      float centerDistance=distance(coords,vec2(.5));
+      float blurInterpolant=1.0-smoothstep(.05,.20,centerDistance);
+      if(blurInterpolant>0.0){
+        vec4 blurredColor=vec4(0.0);
+        for(int i=-6;i<6;i++)
+          blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
+        color=mix(color,blurredColor,blurInterpolant);
+      }
+      float luminosity=dot(color.rgb,vec3(.3,.6,.1));
+      float paletteInterpolant=sin(luminosity*6.283-globalTime*1.5)*.5+.5;
+      vec4 evilColor=vec4(nilkPalette(paletteInterpolant),1.0);
+      evilColor-=distance(coords,vec2(.5))*.6;
+      vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
+      evilColor=mix(evilColor,overlayColor,overlayColor.a);
+      screenColor=mix(baseColor,evilColor,effective).rgb;
+      sampleUv=coords;
+    }else{
+      vec2 delta=vec2(0.0);
+      float fieldA=fbm(p*1.8+vec2(captureTime*.08,-captureTime*.05));
+      float fieldB=fbm(p*2.1+vec2(-captureTime*.06,captureTime*.07));
+      if(mode<1.5){
+        delta=vec2(sin(p.y*7.0+captureTime)*.014+(fieldA-.5)*.026,
+                   cos(p.x*5.4-captureTime*.8)*.011+(fieldB-.5)*.020)*strength;
+        colorBlend=.10*strength;
+        colorPhase=fieldA+captureTime*.035;
+      }else if(mode<2.5){
+        delta=(vec2(fieldA,fieldB)-.5)*.075*strength;
+        delta+=vec2(sin(p.y*12.0+captureTime),cos(p.x*10.0-captureTime))*.010*strength;
+        colorBlend=.16*strength;
+        colorPhase=fieldB+captureTime*.06;
+      }else if(mode<3.5){
+        float row=floor(uv.y*118.0);
+        float slice=step(.84,hash(vec2(row,floor(captureTime*5.0))));
+        float tear=(hash(vec2(row,floor(captureTime*8.0)+19.0))-.5)*.075*slice*strength;
+        delta.x=tear+sin(uv.y*118.0+captureTime*1.8)*.0025*strength;
+        delta.y=sin(uv.x*44.0+captureTime)*.002*strength;
+        colorBlend=.055*strength;
+        colorPhase=hash(vec2(row,floor(captureTime*2.0)))+captureTime*.03;
+      }else if(mode<4.5){
+        float radius=length(p)+.0001;
+        float wave=sin(radius*25.0-captureTime*1.35+fieldA*2.0);
+        delta=normalize(p)*wave*.032*strength;
+        delta+=vec2(-p.y,p.x)*(.018*strength/(radius+.35));
+        colorBlend=.14*strength;
+        colorPhase=radius*.7+captureTime*.045;
+      }else{
+        vec2 lens=vec2(.28*sin(captureTime*.43),.22*cos(captureTime*.37));
+        vec2 d=p-lens;
+        float radius=length(d)+.025;
+        float vortex=sin(radius*31.0-captureTime*2.0+fieldB*4.0);
+        delta=(vec2(fieldA,fieldB)-.5)*.105*strength;
+        delta+=vec2(-d.y,d.x)*(vortex*.045*strength/(radius+.22));
+        delta-=d*(sin(radius*16.0-captureTime)*.018*strength/(radius+.30));
+        colorBlend=.18*strength;
+        colorPhase=fieldA+fieldB+captureTime*.10;
+      }
+      sampleUv=clamp(uv+vec2(delta.x/aspect,delta.y),vec2(.001),vec2(.999));
+      float split=.0012*strength;
+      if(mode>4.5)split=.0030*strength;
+      if(mode>3.5&&mode<4.5)split=.0020*strength;
+      screenColor.r=texture2D(screenFrame,clamp(sampleUv+vec2(split,0.0),vec2(.001),vec2(.999))).r;
+      screenColor.g=texture2D(screenFrame,sampleUv).g;
+      screenColor.b=texture2D(screenFrame,clamp(sampleUv-vec2(split,0.0),vec2(.001),vec2(.999))).b;
+      if(mode>2.5&&mode<3.5){
+        float scan=.93+.07*step(.5,fract(uv.y*236.0));
+        screenColor*=scan;
+      }
+      vec3 tint=spectrum(colorPhase);
+      screenColor=mix(screenColor,screenColor*.88+tint*.12,colorBlend);
+    }
+    if(cursorVisible>.5){
+      vec2 cursorPoint=(sampleUv-cursorUv)*frameSize;
+      if(cursorPoint.x>-2.0&&cursorPoint.x<19.0&&cursorPoint.y>-24.0&&cursorPoint.y<5.0){
+        float cursorFill=cursorShape(cursorPoint);
+        float cursorOutline=max(cursorFill,max(max(cursorShape(cursorPoint+vec2(1.2,0.0)),cursorShape(cursorPoint-vec2(1.2,0.0))),
+                               max(cursorShape(cursorPoint+vec2(0.0,1.2)),cursorShape(cursorPoint-vec2(0.0,1.2)))));
+        screenColor=mix(screenColor,vec3(.008,.006,.020),cursorOutline);
+        screenColor=mix(screenColor,vec3(.96,.96,1.0),cursorFill);
+      }
+    }
+    gl_FragColor=vec4(clamp(screenColor,0.0,1.0),1.0);
+    return;
+  }
+  // Mode 6 is the monitor-capture Nilk shader only. Never fall through to the
+  // generic Chaos overlay while its monitor capture has not started.
+  if(mode>5.5){gl_FragColor=vec4(0.0);return;}
+  float flowMode=1.0-step(1.5,mode);
+  float textureMode=step(1.5,mode)*(1.0-step(2.5,mode));
+  float glyphMode=step(2.5,mode)*(1.0-step(3.5,mode));
+  float fullMode=step(3.5,mode)*(1.0-step(4.5,mode));
   float chaos=step(4.5,mode);
+  float power=clamp(intensity*1.55*(1.0-.20*flowMode+.06*textureMode+.12*fullMode+.18*chaos),0.0,1.0);
   float chaosPower=chaos*power;
   float time=t*.72;
 
   vec2 q=p;
   q += vec2(fbm(p*1.15+vec2(time*.07,-time*.04)), fbm(p*1.10+vec2(-time*.05,time*.06)))*.72-.36;
-  q += vec2(sin(p.y*7.0+time*.9), cos(p.x*6.0-time*.7))*.035*power;
+  q += vec2(sin(p.y*7.0+time*.9), cos(p.x*6.0-time*.7))*.035*power*(1.0-.34*flowMode);
+  q += vec2(sin(p.y*12.0+time*.44),cos(p.x*10.0-time*.38))*(.010*textureMode+.014*fullMode)*power;
   float pr=length(p)+.001;
   float pa=atan(p.y,p.x);
   vec2 panic=rot(p,time*(.10+.10*chaos));
@@ -556,7 +1155,7 @@ void main(){
 
   vec2 q2=q;
   q2 += vec2(fbm(q*2.0+time*.10), fbm(q*2.2-time*.09))*.34-.17;
-  q2 += vec2(sin(q.y*15.0+time*1.1), cos(q.x*13.0-time*.9))*.018*power;
+  q2 += vec2(sin(q.y*15.0+time*1.1), cos(q.x*13.0-time*.9))*.018*power*(1.0-.22*flowMode+.20*chaos);
   float n1=fbm(q2*2.15+vec2(time*.035,-time*.025));
   float n2=fbm(q2*5.40+vec2(-time*.055,time*.045)+n1*1.7);
   float n3=fbm(q2*12.0+vec2(time*.12,-time*.10)+n2*2.1);
@@ -581,6 +1180,27 @@ void main(){
   float crimson=clamp(ridge(plasma+n2*.18,.80,.18)*smoothstep(.25,1.0,cross+n3*.50),0.0,1.0);
   float rainbowField=ridge(sin((q2.x*4.8+q2.y*3.9+n1*3.8)+time*.70)*.5+.5,.50,.30);
   float prism=ridge(plasma+n3*.28+sin(time*.31)*.08,.52,.24)*smoothstep(.18,1.0,abs(flow)+n2*.45);
+  float textureLace=max(ridge(fract(marble*7.0+n2*.55-time*.026),.50,.075),
+                        ridge(fract(plasma*6.0+n3*.35+time*.018),.50,.065))*textureMode;
+  float polarAngle=atan(q.y,q.x);
+  float polarRadius=length(q);
+  float sector=abs(fract(polarAngle*8.0/6.2831853+.5)-.5);
+  float radialFold=abs(fract(polarRadius*7.0-time*.045)-.5);
+  float mandala=(max(ridge(sector,.015,.035),ridge(sector,.485,.035)*.72)*
+                 (.28+.72*ridge(radialFold,.44,.065)))*fullMode;
+  vec2 glyphUv=uv*vec2(58.0,32.0);
+  glyphUv.x+=sin(glyphUv.y*.36+time*.58)*.16*glyphMode;
+  vec2 glyphId=floor(glyphUv);
+  vec2 glyphCell=fract(glyphUv)-.5;
+  float glyphSeed=hash(glyphId+vec2(17.0,43.0));
+  float glyphV=(1.0-smoothstep(.025,.075,abs(glyphCell.x-.13)))*
+               (1.0-smoothstep(.22,.48,abs(glyphCell.y)))*step(.34,glyphSeed);
+  float glyphH=(1.0-smoothstep(.025,.070,abs(glyphCell.y+.16)))*
+               (1.0-smoothstep(.19,.45,abs(glyphCell.x)))*step(.55,hash(glyphId+vec2(31.0,7.0)));
+  float glyphD=(1.0-smoothstep(.026,.070,abs(glyphCell.y-glyphCell.x*(glyphSeed>.5?1.0:-1.0))))*
+               step(.70,hash(glyphId+vec2(5.0,29.0)));
+  float glyphInk=max(max(glyphV,glyphH),glyphD)*glyphMode;
+  float glyphScan=ridge(fract(uv.y*110.0+time*.12),.5,.028)*glyphMode;
   float deepPulse=.72+.28*sin(time*.95+n1*5.0+marble*3.2);
   float violet=ridge(plasma,.58,.32);
   float magenta=ridge(plasma,.72,.22)*smoothstep(-.15,.95,flow);
@@ -644,6 +1264,10 @@ void main(){
   col+=vec3(.85,.16,1.0)*noxusDust*.85;
   col+=vec3(.12,.62,1.0)*noxusTidal*.40;
   col+=noxusHue*noxusLens*.18;
+  col=mix(col,spectrum(glyphSeed*.43+n1*.18+time*.05),glyphInk*.72);
+  col+=vec3(.02,.50,.72)*glyphScan*.18;
+  col=mix(col,spectrum(marble*.42+n2*.28+time*.025),textureLace*.52);
+  col=mix(col,spectrum(polarRadius*1.8+polarAngle*.19-time*.035),mandala*.58);
   col=mix(col,1.0-col,(chaosShard*.10+thoughtWeb*.06)*chaos);
   col=mix(col,col*.54+spectrum(time*.10+n1*.25+fieldA*.30)*.74,lensBody*.18*chaos);
   col+=spectrum(time*.19+n2*.35+sa*.12)*chaosShard*.36;
@@ -679,12 +1303,14 @@ void main(){
   float signal=clamp(violet*.34+magenta*.58+emerald*.38+pale*.28+sparks*.78+blueVein*.48+silverEdge*.38+
                       aurora*.38+kaleido*.42+cellular*.30+ribbon*.26+amber*.34+crimson*.36+
                       rainbowField*.42+prism*.34+noxusLens*.42+noxusShock*.36+noxusDust*.70+noxusTidal*.38+
-                      chaosShard*.24+chaosPulse*.46+liquidSurge*.44+meltFold*.30+lensBody*.34+lensRim*.30+shearWarp*.40+thoughtWeb*.30+meltEcho*.26,0.0,1.0);
+                      chaosShard*.24+chaosPulse*.46+liquidSurge*.44+meltFold*.30+lensBody*.34+lensRim*.30+shearWarp*.40+thoughtWeb*.30+meltEcho*.26+
+                      textureLace*.36+mandala*.42+glyphInk*.56+glyphScan*.20,0.0,1.0);
   float veil=smoothstep(.18,.95,plasma+n1*.22)*.09 + smoothstep(.25,.90,marble+n2*.25)*.070;
   float vign=1.0-smoothstep(.58,1.20,length(p));
-  float alpha=(veil+signal*.60)*power*(.70+.30*vign);
+  float alpha=(veil+signal*.60)*power*(.70+.30*vign)*(1.0-.12*flowMode);
   alpha=clamp(alpha+(noxusLens*.16+noxusShock*.15+noxusDust*.22+
-              chaosShard*.05+chaosPulse*.12+liquidSurge*.12+meltFold*.08+lensBody*.12+lensRim*.07+shearWarp*.11+thoughtWeb*.08+meltEcho*.07)*power,0.0,.88);
+              chaosShard*.05+chaosPulse*.12+liquidSurge*.12+meltFold*.08+lensBody*.12+lensRim*.07+shearWarp*.11+thoughtWeb*.08+meltEcho*.07+
+              textureLace*.10+mandala*.12+glyphInk*.20+glyphScan*.06)*power,0.0,.88);
   gl_FragColor=vec4(col,alpha);
 }
 `;
@@ -707,11 +1333,191 @@ void main(){
   gl.enableVertexAttribArray(attr);
   gl.vertexAttribPointer(attr,2,gl.FLOAT,false,0,0);
   const ur=gl.getUniformLocation(program,'r'), ut=gl.getUniformLocation(program,'t'), ui=gl.getUniformLocation(program,'intensity'), um=gl.getUniformLocation(program,'mode');
+  const uNilkClock=gl.getUniformLocation(program,'nilkGlobalTime');
+  const uNilkIntensity=gl.getUniformLocation(program,'nilkIntensity');
+  const us=gl.getUniformLocation(program,'screenFrame'), up=gl.getUniformLocation(program,'previousScreenFrame');
+  const uNilkNoise=gl.getUniformLocation(program,'nilkNoiseTexture');
+  const uNilkPalette=gl.getUniformLocation(program,'nilkPaletteTexture');
+  const uNilkOverlay=gl.getUniformLocation(program,'nilkOverlayTexture');
+  const uc=gl.getUniformLocation(program,'captureActive'), uh=gl.getUniformLocation(program,'historyValid');
+  const uCursor=gl.getUniformLocation(program,'cursorUv'), uFrameSize=gl.getUniformLocation(program,'frameSize');
+  const uCursorVisible=gl.getUniformLocation(program,'cursorVisible');
+  const frameTextureSizes=new WeakMap();
+  function createFrameTexture(){
+    const texture=gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,texture);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+    frameTextureSizes.set(texture,[1,1]);
+    return texture;
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  let screenTexture=createFrameTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  let previousScreenTexture=createFrameTexture();
+  gl.uniform1i(us,0); gl.uniform1i(up,1);
+  gl.activeTexture(gl.TEXTURE2);
+  const nilkNoiseTexture=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,nilkNoiseTexture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([128,128,128,255]));
+  gl.uniform1i(uNilkNoise,2);
+  const nilkNoiseImage=new Image();
+  nilkNoiseImage.onload=()=>{
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D,nilkNoiseTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,nilkNoiseImage);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+    gl.activeTexture(gl.TEXTURE0);
+  };
+  nilkNoiseImage.src='nilk-noise.png';
+  gl.activeTexture(gl.TEXTURE0);
+  gl.activeTexture(gl.TEXTURE3);
+  const nilkPaletteTexture=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,nilkPaletteTexture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,8,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(32));
+  gl.uniform1i(uNilkPalette,3);
+  gl.activeTexture(gl.TEXTURE4);
+  const nilkOverlayTexture=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,nilkOverlayTexture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,0]));
+  gl.uniform1i(uNilkOverlay,4);
+  gl.activeTexture(gl.TEXTURE0);
+  let currentNilkPaletteKey='';
+  function setNilkPalette(colors){
+    const key=JSON.stringify(colors);
+    if(key===currentNilkPaletteKey)return;
+    currentNilkPaletteKey=key;
+    const bytes=new Uint8Array(32);
+    for(let i=0;i<8;i++){
+      const color=colors[i];
+      bytes[i*4]=Math.round(color[0]*255);
+      bytes[i*4+1]=Math.round(color[1]*255);
+      bytes[i*4+2]=Math.round(color[2]*255);
+      bytes[i*4+3]=255;
+    }
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D,nilkPaletteTexture);
+    gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,8,1,gl.RGBA,gl.UNSIGNED_BYTE,bytes);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  let activeStream=null, screenCaptureActive=false, hasHistory=false, frameCount=0, lastVideoTime=-1;
+  let nilkGlobalTime=0, nilkIntensity=0, nilkStateRunning=false, nilkStateReceivedAt=0;
+  let cursorU=.5, cursorV=.5, cursorIsVisible=0, nativeCursorMode='never', nativeCursorMotionUntil=0;
+  function reportCaptureSize(){
+    if(!activeStream)return;
+    const track=activeStream.getVideoTracks()[0];
+    const surface=track&&track.getSettings().displaySurface||'unknown';
+    notifyHost(`capture-size:${screenVideo.videoWidth||0},${screenVideo.videoHeight||0},${surface}`);
+  }
+  screenVideo.addEventListener('resize',reportCaptureSize);
+  window.chrome.webview.addEventListener('message',event=>{
+    const message=event.data;
+    if(message&&message.type==='cursor'){
+      cursorU=Number(message.u)||0;
+      cursorV=Number(message.v)||0;
+      cursorIsVisible=message.visible?1:0;
+      if(nativeCursorMode==='motion')nativeCursorMotionUntil=performance.now()+140;
+    }else if(message&&message.type==='nilk-state'){
+      nilkGlobalTime=Number(message.globalTime)||0;
+      nilkIntensity=Number(message.intensity)||0;
+      nilkStateRunning=!!message.running;
+      nilkStateReceivedAt=performance.now();
+      if(message.palette)setNilkPalette(message.palette);
+    }
+  });
+  function notifyHost(message){if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(message);}
+function showCapturePanel(message){capturePanel.style.display='block';captureStatus.textContent=message;hud.style.display='none';}
+  function stopCapture(message="Screen capture stopped."){
+    const oldStream=activeStream;
+    activeStream=null;
+    screenCaptureActive=false;
+    nativeCursorMode='never';
+    nativeCursorMotionUntil=0;
+    hasHistory=false;
+    frameCount=0;
+    lastVideoTime=-1;
+    cursorIsVisible=0;
+    document.body.classList.remove('capture-active');
+    screenVideo.pause();
+    screenVideo.srcObject=null;
+    if(oldStream)oldStream.getTracks().forEach(track=>track.stop());
+    showCapturePanel(message);
+    notifyHost('capture-stopped');
+  }
+  async function startCapture(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){showCapturePanel("This WebView does not support screen capture.");notifyHost("capture-error");return;}
+    startCaptureButton.disabled=true;
+    captureStatus.textContent="Choose an entire monitor. Window capture is not supported for the full-screen Nilk effect.";
+    try{
+      const pending=navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'monitor',cursor:'never',frameRate:{ideal:60,max:60}},audio:false});
+      const stream=await pending;
+      const track=stream.getVideoTracks()[0];
+      if(!track)throw new Error("No screen video track was returned.");
+      const selectedSurface=track.getSettings().displaySurface||'unknown';
+      if(selectedSurface!=='monitor'&&selectedSurface!=='unknown'){
+        stream.getTracks().forEach(item=>item.stop());
+        throw new Error("Choose an entire monitor in the Windows sharing picker, not a window or browser tab.");
+      }
+      activeStream=stream;
+      track.addEventListener("ended",()=>{if(activeStream===stream)stopCapture("Screen sharing ended.");},{once:true});
+      try{await track.applyConstraints({cursor:{exact:'never'}});}catch(_){}
+      const cursorSetting=track.getSettings().cursor;
+      nativeCursorMode=cursorSetting==='always'||cursorSetting==='motion'?cursorSetting:'never';
+      screenVideo.srcObject=stream;
+      await screenVideo.play();
+      screenCaptureActive=true;
+      hasHistory=false;
+      frameCount=0;
+      lastVideoTime=-1;
+      document.body.classList.add('capture-active');
+      capturePanel.style.display='none';
+      hud.style.display='none';
+      notifyHost('capture-started');
+      reportCaptureSize();
+    }catch(error){
+      const canceled=error&&error.name==="NotAllowedError";
+      if(activeStream){const failed=activeStream;activeStream=null;failed.getTracks().forEach(track=>track.stop());}
+      showCapturePanel(canceled?"Screen capture canceled. Press the button to try again.":(error&&error.message)||"Could not capture the screen. Choose a source again.");
+      notifyHost(canceled?'capture-cancelled':'capture-error');
+    }finally{startCaptureButton.disabled=false;}
+  }
+  startCaptureButton.addEventListener('click',startCapture);
+  window.rejectNonMonitorCapture=()=>stopCapture("Choose an entire monitor in the Windows sharing picker. Window capture is disabled for this full-screen effect.");
+  window.toggleScreenCapture=()=>{if(activeStream)stopCapture();else showCapturePanel("Choose an entire monitor for full-screen distortion.");};
+  window.addEventListener('pagehide',()=>{if(activeStream)activeStream.getTracks().forEach(track=>track.stop());});
 
   let targetIntensity=.52, shownIntensity=.52, currentMode=4, paused=false, shaderTime=0, last=performance.now();
-  window.setOverlayState=(i,p,m)=>{targetIntensity=Math.max(0,Math.min(.9,Number(i)||0));paused=!!p;currentMode=Number(m)||4;const label=currentMode>=5?'CHAOS':'NILK';hud.textContent=`Num1 NILK | Num2 CHAOS | Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | ${label} INT ${Math.round(targetIntensity*100)}%${paused?' PAUSED':''}`;};
+  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK'];
+  window.setOverlayState=(i,p,m)=>{
+    targetIntensity=Math.max(0,Math.min(1,Number(i)||0));
+    paused=!!p;
+    currentMode=Math.max(1,Math.min(6,Number(m)||4));
+    const label=modeNames[currentMode-1];
+    hud.textContent=`Ctrl+Alt+1-6 | arrows | Up/Down | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
+  };
   function resize(){
-    const dpr=Math.min(devicePixelRatio||1,1.35);
+    let dpr=Math.min(devicePixelRatio||1,1.35);
+    if(screenCaptureActive&&screenVideo.videoWidth&&screenVideo.videoHeight){
+      dpr=Math.min(dpr,screenVideo.videoWidth/Math.max(1,innerWidth),screenVideo.videoHeight/Math.max(1,innerHeight));
+    }
+    const pixelCount=innerWidth*innerHeight*dpr*dpr;
+    dpr*=Math.min(1,Math.sqrt(2500000/Math.max(1,pixelCount)));
     const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
   }
@@ -726,6 +1532,44 @@ void main(){
     gl.uniform1f(ut,shaderTime);
     gl.uniform1f(ui,shownIntensity);
     gl.uniform1f(um,currentMode);
+    const nilkRenderTime=nilkGlobalTime+(nilkStateRunning?(performance.now()-nilkStateReceivedAt)*.001:0);
+    gl.uniform1f(uNilkClock,nilkRenderTime);
+    gl.uniform1f(uNilkIntensity,nilkIntensity);
+    gl.uniform1f(uc,screenCaptureActive?1:0);
+    gl.uniform1f(uh,hasHistory?1:0);
+    gl.uniform2f(uCursor,cursorU,cursorV);
+    gl.uniform1f(uCursorVisible,cursorIsVisible&&!(nativeCursorMode==='always'||(nativeCursorMode==='motion'&&performance.now()<nativeCursorMotionUntil))?1:0);
+    if(screenCaptureActive&&screenVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D,screenTexture);
+      if(screenVideo.currentTime!==lastVideoTime){
+        const oldScreenTexture=screenTexture;
+        screenTexture=previousScreenTexture;
+        previousScreenTexture=oldScreenTexture;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D,screenTexture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+        try{
+          const width=screenVideo.videoWidth,height=screenVideo.videoHeight;
+          const allocated=frameTextureSizes.get(screenTexture);
+          if(!allocated||allocated[0]!==width||allocated[1]!==height){
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,screenVideo);
+            frameTextureSizes.set(screenTexture,[width,height]);
+          }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,screenVideo);
+        }
+        catch(_){stopCapture("Could not upload the screen frame to WebGL.");}
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+        hasHistory=frameCount>0;
+        frameCount++;
+        lastVideoTime=screenVideo.currentTime;
+      }
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D,screenTexture);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D,previousScreenTexture);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform2f(uFrameSize,screenVideo.videoWidth||1,screenVideo.videoHeight||1);
+    }
     gl.drawArrays(gl.TRIANGLES,0,3);
     requestAnimationFrame(frame);
   }
@@ -778,16 +1622,6 @@ void main(){
         previousTripPixelBuffer = new byte[requiredBytes];
     }
 
-    private void DrawNilkShaderApproximation(Graphics g, int w, int h, float p)
-    {
-        DrawFullScreenIridescence(g, w, h, p * 1.05f);
-        DrawTextureLayer(g, cosmosTexture, w, h, 0.016f, 1.24f, 0.060f * p, 0.00f);
-        DrawTextureLayer(g, psychedelicTexture, w, h, -0.022f, 1.08f, 0.105f * p, 0.27f);
-        DrawTextureLayer(g, voidTexture, w, h, 0.013f, 1.42f, 0.070f * p, 0.52f);
-        DrawTextureLayer(g, noiseTexture, w, h, -0.035f, 0.86f, 0.028f * p, 0.78f);
-        DrawSoftVignette(g, w, h, p * 0.95f);
-    }
-
     private void RenderNilkShaderPixels(int w, int h, float p)
     {
         if (tripBitmap is null || tripPixelBuffer is null || previousTripPixelBuffer is null)
@@ -807,7 +1641,11 @@ void main(){
             float smoothOpacity = opacity * opacity * (3f - opacity * 2f);
             float effective = Math.Clamp(opacity * (0.35f + smoothOpacity * 0.95f), 0f, 1f);
             float overlayPower = Math.Clamp(opacity * 1.45f, 0f, 1f);
-            float progress = Frac(0.985f + time / NilkCycleSeconds);
+            float textureMode = mode == EffectMode.TextureTrip ? 1f : 0f;
+            float glyphMode = mode == EffectMode.GlyphGlitch ? 1f : 0f;
+            float fullMode = mode == EffectMode.FullTrip ? 1f : 0f;
+            float chaosMode = mode == EffectMode.Chaos ? 1f : 0f;
+            float progress = Frac(0.985f + time / ModePaletteCycleSeconds);
             float minute = progress * 60f;
             float cyanPhase = Saturate(
                 Bell(minute, 8.7f, 2.35f) +
@@ -873,6 +1711,31 @@ void main(){
                                              flowBand * 0.070f + tearBand * 0.030f, 0f, 1f);
                     float edgeCenter = 0.47f + MathF.Sin(time * 0.19f + texB * 2.0f) * 0.085f;
                     float contour = 1f - SmoothStep(0.020f, 0.130f, MathF.Abs(field - edgeCenter));
+                    float textureLace = MathF.Max(
+                        1f - SmoothStep(0.025f, 0.090f, MathF.Abs(Frac(field * 7f + texB * 0.55f - time * 0.026f) - 0.5f)),
+                        1f - SmoothStep(0.025f, 0.085f, MathF.Abs(Frac(texA * 6f + texC * 0.30f + time * 0.018f) - 0.5f))) * textureMode;
+
+                    float polarAngle = MathF.Atan2(py, px);
+                    float sector = MathF.Abs(Frac(polarAngle * 8f / MathF.Tau + 0.5f) - 0.5f);
+                    float radialFold = MathF.Abs(Frac(dist * 7f - time * 0.045f) - 0.5f);
+                    float mandala = MathF.Max(
+                        1f - SmoothStep(0.012f, 0.040f, sector),
+                        (1f - SmoothStep(0.012f, 0.040f, 0.5f - sector)) * 0.72f) *
+                        (0.28f + 0.72f * (1f - SmoothStep(0.012f, 0.075f, MathF.Abs(radialFold - 0.44f)))) * fullMode;
+
+                    float glyphU = Frac(u * 54f + MathF.Sin(v * 19f + time * 0.58f) * 0.035f) - 0.5f;
+                    float glyphV = Frac(v * 29f) - 0.5f;
+                    float glyphSeed = ValueNoise(MathF.Floor(u * 54f), MathF.Floor(v * 29f));
+                    float glyphVertical = (1f - SmoothStep(0.025f, 0.075f, MathF.Abs(glyphU - 0.13f))) *
+                                          (1f - SmoothStep(0.22f, 0.48f, MathF.Abs(glyphV))) *
+                                          (1f - SmoothStep(0.34f, 0.58f, glyphSeed));
+                    float glyphHorizontal = (1f - SmoothStep(0.025f, 0.070f, MathF.Abs(glyphV + 0.16f))) *
+                                            (1f - SmoothStep(0.19f, 0.45f, MathF.Abs(glyphU))) *
+                                            SmoothStep(0.48f, 0.70f, glyphSeed);
+                    float glyphDiagonal = (1f - SmoothStep(0.026f, 0.070f, MathF.Abs(glyphV - glyphU * (glyphSeed > 0.5f ? 1f : -1f)))) *
+                                          SmoothStep(0.70f, 0.88f, glyphSeed);
+                    float glyphInk = MathF.Max(MathF.Max(glyphVertical, glyphHorizontal), glyphDiagonal) * glyphMode;
+                    float glyphScan = (1f - SmoothStep(0.02f, 0.06f, MathF.Abs(Frac(v * 110f + time * 0.12f) - 0.5f))) * glyphMode;
 
                     float greenBand = SmoothStep(0.28f, 0.48f, field) * (1f - SmoothStep(0.62f, 0.86f, field));
                     float violetBand = SmoothStep(0.46f, 0.69f, field);
@@ -976,13 +1839,36 @@ void main(){
                         b = Lerp(b, 220f, fragment * 0.65f);
                     }
 
+                    float laceMix = textureLace * 0.56f;
+                    r = Lerp(r, 62f + 156f * textureLace, laceMix);
+                    g = Lerp(g, 28f + 178f * textureLace, laceMix);
+                    b = Lerp(b, 172f + 78f * textureLace, laceMix);
+
+                    float mandalaMix = mandala * 0.62f;
+                    r = Lerp(r, 112f + 120f * mandala, mandalaMix);
+                    g = Lerp(g, 52f + 142f * mandala, mandalaMix);
+                    b = Lerp(b, 214f + 40f * mandala, mandalaMix);
+
+                    float glyphHue = glyphSeed * MathF.Tau + time * 0.08f;
+                    float glyphMix = glyphInk * 0.78f;
+                    r = Lerp(r, 130f + 112f * MathF.Sin(glyphHue), glyphMix);
+                    g = Lerp(g, 128f + 112f * MathF.Sin(glyphHue + 2.1f), glyphMix);
+                    b = Lerp(b, 132f + 112f * MathF.Sin(glyphHue + 4.2f), glyphMix);
+                    g += glyphScan * 26f;
+
+                    float chaosShard = SmoothStep(0.54f, 0.72f, texC + field * 0.32f) * chaosMode;
+                    r = Lerp(r, 252f, chaosShard * 0.82f);
+                    g = Lerp(g, 44f + greenBand * 190f, chaosShard);
+                    b = Lerp(b, 242f, chaosShard * 0.86f);
+
                     float vignette = Math.Clamp(0.76f + (1f - dist * 0.80f) * 0.24f, 0.50f, 1f);
                     float blotch = 0.70f + 0.30f * SmoothStep(0.20f, 0.85f, field + texB * 0.08f);
                     float phaseAlpha = 1f + cyanPhase * 0.26f + voidPhase * 0.10f + redPhase * 0.32f;
                     float colorSignal = Math.Clamp(violetCore * 0.70f + emeraldSheen * 0.45f + broadBand * 0.52f + contour * 0.46f, 0f, 1f);
                     float alphaF = ((0.008f + 0.155f * overlayPower) * phaseAlpha * blotch + contour * 0.150f * overlayPower) * vignette;
                     alphaF += broadBand * 0.105f * overlayPower + datamosh * 0.018f + palePhase * 0.010f * overlayPower +
-                              fragment * 0.18f * overlayPower + (cellRim + greenCore) * 0.18f * overlayPower + colorSignal * 0.115f * overlayPower;
+                              fragment * 0.18f * overlayPower + (cellRim + greenCore) * 0.18f * overlayPower + colorSignal * 0.115f * overlayPower +
+                              textureLace * 0.12f * overlayPower + mandala * 0.14f * overlayPower + (glyphInk * 0.22f + glyphScan * 0.05f + chaosShard * 0.10f) * overlayPower;
                     alphaF = Math.Clamp(alphaF, 0f, 0.66f);
 
                     r = Math.Clamp(r, 0f, 255f);
@@ -1588,7 +2474,7 @@ void main(){
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = $"Num1 NILK | Num2 CHAOS | Num+ / Num- power | Ctrl+Alt+P pause | Ctrl+Alt+Q exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-6 modes | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -1608,6 +2494,7 @@ void main(){
             EffectMode.GlyphGlitch => "SOFT GLITCH",
             EffectMode.FullTrip => "FULL TRIP",
             EffectMode.Chaos => "CHAOS",
+            EffectMode.Nilk => "NILK CYCLE",
             _ => "UNKNOWN"
         };
     }
@@ -1795,12 +2682,27 @@ void main(){
         uint mods = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
         uint directMods = MOD_NOREPEAT;
 
-        RegisterHotKey(Handle, HotkeyIntensityUp, directMods, (uint)Keys.Add);
-        RegisterHotKey(Handle, HotkeyIntensityDown, directMods, (uint)Keys.Subtract);
-        RegisterHotKey(Handle, HotkeyPrevMode, directMods, (uint)Keys.NumPad1);
-        RegisterHotKey(Handle, HotkeyNextMode, directMods, (uint)Keys.NumPad2);
-        RegisterHotKey(Handle, HotkeyTogglePause, mods, (uint)Keys.P);
-        RegisterHotKey(Handle, HotkeyExit, mods, (uint)Keys.Q);
+        RegisterHotKey(Handle, HotkeyFlowMode, mods, (uint)Keys.D1);
+        RegisterHotKey(Handle, HotkeyTextureMode, mods, (uint)Keys.D2);
+        RegisterHotKey(Handle, HotkeyGlyphMode, mods, (uint)Keys.D3);
+        RegisterHotKey(Handle, HotkeyFullMode, mods, (uint)Keys.D4);
+        RegisterHotKey(Handle, HotkeyChaosMode, mods, (uint)Keys.D5);
+        RegisterHotKey(Handle, HotkeyNilkMode, mods, (uint)Keys.D6);
+        RegisterHotKey(Handle, HotkeyPrevMode, mods, (uint)Keys.Left);
+        RegisterHotKey(Handle, HotkeyNextMode, mods, (uint)Keys.Right);
+        RegisterHotKey(Handle, HotkeyIntensityUp, mods, (uint)Keys.Up);
+        RegisterHotKey(Handle, HotkeyIntensityDown, mods, (uint)Keys.Down);
+        RegisterHotKey(Handle, HotkeyTogglePause, mods, (uint)Keys.Space);
+        RegisterHotKey(Handle, HotkeyExit, mods, (uint)Keys.Escape);
+        RegisterHotKey(Handle, HotkeyToggleScreenCapture, mods, (uint)Keys.R);
+
+        // Keep the original shortcuts usable for existing installations.
+        RegisterHotKey(Handle, HotkeyIntensityUpF, directMods, (uint)Keys.Add);
+        RegisterHotKey(Handle, HotkeyIntensityDownF, directMods, (uint)Keys.Subtract);
+        RegisterHotKey(Handle, HotkeyPrevModeF, directMods, (uint)Keys.NumPad1);
+        RegisterHotKey(Handle, HotkeyNextModeF, directMods, (uint)Keys.NumPad2);
+        RegisterHotKey(Handle, HotkeyTogglePauseF, mods, (uint)Keys.P);
+        RegisterHotKey(Handle, HotkeyExitF, mods, (uint)Keys.Q);
     }
 
     private void UnregisterOverlayHotkeys()
@@ -1825,12 +2727,39 @@ void main(){
         UnregisterHotKey(Handle, HotkeyExitF);
         UnregisterHotKey(Handle, HotkeyNextModeF);
         UnregisterHotKey(Handle, HotkeyPrevModeF);
+        UnregisterHotKey(Handle, HotkeyChaosMode);
+        UnregisterHotKey(Handle, HotkeyNilkMode);
+        UnregisterHotKey(Handle, HotkeyToggleScreenCapture);
     }
 
     private void MakeClickThrough()
     {
+        SetInputPassthrough(true);
+    }
+
+    private void MakeInteractive()
+    {
+        SetInputPassthrough(false);
+    }
+
+    private void SetInputPassthrough(bool enabled)
+    {
         int style = GetWindowLong(Handle, GWL_EXSTYLE);
-        SetWindowLong(Handle, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+        style |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+        if (enabled)
+            style |= WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+        else
+            style &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
+
+        SetWindowLong(Handle, GWL_EXSTYLE, style);
+        _ = SetWindowPos(
+            Handle,
+            0,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
 
     private static string FindAssetRoot()
@@ -1997,6 +2926,15 @@ void main(){
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct CursorInfo
+    {
+        public uint Size;
+        public uint Flags;
+        public nint CursorHandle;
+        public NativePoint ScreenPosition;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct NativeSize
     {
         public int Cx;
@@ -2070,6 +3008,27 @@ void main(){
 
     [DllImport("user32.dll")]
     private static extern int SetWindowLong(nint hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetCursorPos(out NativePoint lpPoint);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetCursorInfo(ref CursorInfo cursorInfo);
+
+    [DllImport("user32.dll")]
+    private static extern int ShowCursor(bool bShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetForegroundWindow(nint hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowDisplayAffinity(nint hWnd, int dwAffinity);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(nint hWnd, int id, uint fsModifiers, uint vk);

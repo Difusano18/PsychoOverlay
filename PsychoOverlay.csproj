@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <Content Include="Assets\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="NoxusReferences\NilkShaderPalettes.json" />
   </ItemGroup>
 
   <ItemGroup>
