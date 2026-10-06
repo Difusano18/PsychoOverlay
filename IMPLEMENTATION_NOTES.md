@@ -8,6 +8,6 @@ The mode 6 fragment shader follows `NoxusReferences/NilkScreenDistortionShader.f
 
 The C# timer starts when mode 6 is selected, freezes while paused, and resets when another mode is selected. The JavaScript render loop interpolates between C# time updates so the shader clock remains smooth. Captured frames update with `texSubImage2D`; the canvas remains capped at the source resolution and 2.5 million pixels.
 
-Mode 7 uses the same shader as mode 6 but freezes its clock at 38:00, 48:30, 52:00, or 58:30. `Ctrl+Alt+PageUp` and `Ctrl+Alt+PageDown` step through those points and clamp at the first and last phase. Selecting mode 6 from mode 7 starts a fresh 60-minute run.
+Mode 7 uses the same shader as mode 6 and seeks its clock to 38:00, 48:30, 52:00, or 58:30. Animation and palette timing continue from the selected point. `Ctrl+Alt+PageUp` and `Ctrl+Alt+PageDown` seek to the next or previous point and clamp at the first and last phase. Selecting mode 6 from mode 7 starts a fresh 60-minute run.
 
 Capture requests `cursor: never`. The native Windows cursor is hidden over the selected monitor, and the shader draws one cursor at the corresponding warped coordinates. Cursor polling sends updates only when the position changes. The overlay returns foreground focus to the previously active app after the picker closes so monitor capture continues through Alt+Tab.

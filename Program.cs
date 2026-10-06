@@ -384,7 +384,7 @@ public sealed class OverlayForm : Form
         nilkSeekPhaseIndex = Math.Clamp(phaseIndex, 0, NilkSeekPhaseTimesSeconds.Length - 1);
         nilkElapsedSeconds = NilkSeekPhaseTimesSeconds[nilkSeekPhaseIndex];
         nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
-        nilkStateTimer.Stop();
+        nilkStateTimer.Start();
         PostNilkShaderState();
     }
 
@@ -809,7 +809,7 @@ public sealed class OverlayForm : Form
     private void UpdateNilkShaderState()
     {
         long now = Stopwatch.GetTimestamp();
-        bool advanceTimeline = mode == EffectMode.Nilk && !paused;
+        bool advanceTimeline = (mode == EffectMode.Nilk || mode == EffectMode.NilkSeek) && !paused;
         if (nilkLastUpdateTimestamp != 0 && advanceTimeline)
         {
             double dt = (now - nilkLastUpdateTimestamp) / (double)Stopwatch.Frequency;
@@ -827,7 +827,7 @@ public sealed class OverlayForm : Form
             nilkShuffleCountdownSeconds = NextNilkPaletteIntervalSeconds();
         }
 
-        if (mode == EffectMode.Nilk && nilkElapsedSeconds >= NilkTotalDurationSeconds)
+        if (advanceTimeline && nilkElapsedSeconds >= NilkTotalDurationSeconds)
             nilkStateTimer.Stop();
 
         PostNilkShaderState();
@@ -875,7 +875,7 @@ public sealed class OverlayForm : Form
             globalTime = (float)nilkElapsedSeconds,
             intensity = NilkIntensity,
             palette,
-            running = mode == EffectMode.Nilk && !paused && nilkElapsedSeconds < NilkTotalDurationSeconds
+            running = (mode == EffectMode.Nilk || mode == EffectMode.NilkSeek) && !paused && nilkElapsedSeconds < NilkTotalDurationSeconds
         });
         gpuView.CoreWebView2.PostWebMessageAsJson(message);
     }
