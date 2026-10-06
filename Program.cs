@@ -30,7 +30,8 @@ public sealed class OverlayForm : Form
         FullTrip = 4,
         Chaos = 5,
         Nilk = 6,
-        NilkSeek = 7
+        NilkSeek = 7,
+        NilkReference = 8
     }
 
     private const int WS_EX_TRANSPARENT = 0x20;
@@ -59,6 +60,8 @@ public sealed class OverlayForm : Form
     private const double NilkTotalDurationSeconds = 60d * 60d;
     private const double NilkPaletteBaseShuffleSeconds = 2d * 60d;
     private const double NilkFirstPaletteRefreshSeconds = 1d / 30d;
+    private const int NilkParadisePaletteIndex = 6;
+    private const double NilkReferenceStartSeconds = 48d * 60d + 30d;
     private static readonly double[] NilkSeekPhaseTimesSeconds = [38d * 60d, 48d * 60d + 30d, 52d * 60d, 58d * 60d + 30d];
     private static readonly float[][][] NilkPalettes = LoadNilkPalettes();
 
@@ -90,6 +93,7 @@ public sealed class OverlayForm : Form
     private const int HotkeyNilkSeekMode = 124;
     private const int HotkeyNilkNextPhase = 125;
     private const int HotkeyNilkPrevPhase = 126;
+    private const int HotkeyNilkReferenceMode = 127;
 
     private static readonly char[] GlyphBank =
         "░▒▓█▓▒░ ᚠᚢᚦᚨᚱᚲ ΨΩΔΛΣΞ ЖЙФЮЯ 目電幻夢零壱弐参 NILK VOID COSMOS LSD 0123456789 @#$%&*<>/\\".ToCharArray();
@@ -305,6 +309,9 @@ public sealed class OverlayForm : Form
                 case HotkeyNilkSeekMode:
                     SetEffectMode(EffectMode.NilkSeek);
                     break;
+                case HotkeyNilkReferenceMode:
+                    SetEffectMode(EffectMode.NilkReference);
+                    break;
                 case HotkeyNilkNextPhase:
                     StepNilkSeekPhase(1);
                     break;
@@ -354,11 +361,14 @@ public sealed class OverlayForm : Form
             targetIntensity = 0.52f;
 
         bool enteringSeekMode = mode != nextMode && nextMode == EffectMode.NilkSeek;
+        bool enteringReferenceMode = mode != nextMode && nextMode == EffectMode.NilkReference;
         bool startNilkRun = nextMode == EffectMode.Nilk && mode != EffectMode.Nilk ||
-                            enteringSeekMode && (int)mode < (int)EffectMode.Nilk;
+                            enteringSeekMode && ((int)mode < (int)EffectMode.Nilk || mode == EffectMode.NilkReference);
         if (mode != nextMode)
         {
-            if (startNilkRun)
+            if (enteringReferenceMode)
+                StartNilkReferenceRun();
+            else if (startNilkRun)
                 StartNilkRun();
             else if ((int)mode >= (int)EffectMode.Nilk && (int)nextMode < (int)EffectMode.Nilk)
                 StopNilkRun();
@@ -572,7 +582,7 @@ public sealed class OverlayForm : Form
 
     private void CycleEffectMode(int direction)
     {
-        const int modeCount = 7;
+        const int modeCount = 8;
         int next = ((int)mode - 1 + direction + modeCount) % modeCount + 1;
         SetEffectMode((EffectMode)next);
     }
@@ -800,6 +810,22 @@ public sealed class OverlayForm : Form
         PostNilkShaderState();
     }
 
+    private void StartNilkReferenceRun()
+    {
+        // The supplied target screenshot is the high-contrast PARADISE look.
+        // Keep this test mode deterministic so a random palette cannot turn it
+        // into the yellow/magenta desktop result again.
+        nilkElapsedSeconds = NilkReferenceStartSeconds;
+        nilkSeekPhaseIndex = -1;
+        nilkPaletteIndex = Math.Clamp(NilkParadisePaletteIndex, 0, NilkPalettes.Length - 1);
+        nilkPaletteSchedule.Clear();
+        nilkPaletteSchedulePosition = 0;
+        lastPostedNilkPaletteIndex = -1;
+        nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
+        nilkStateTimer.Start();
+        PostNilkShaderState();
+    }
+
     private void StopNilkRun()
     {
         UpdateNilkShaderState();
@@ -816,21 +842,25 @@ public sealed class OverlayForm : Form
     private void UpdateNilkShaderState()
     {
         long now = Stopwatch.GetTimestamp();
-        bool advanceTimeline = (mode == EffectMode.Nilk || mode == EffectMode.NilkSeek) && !paused;
+        bool referenceMode = mode == EffectMode.NilkReference;
+        bool advanceTimeline = (mode == EffectMode.Nilk || mode == EffectMode.NilkSeek || referenceMode) && !paused;
         if (nilkLastUpdateTimestamp != 0 && advanceTimeline)
         {
             double dt = (now - nilkLastUpdateTimestamp) / (double)Stopwatch.Frequency;
-            nilkElapsedSeconds = Math.Min(NilkTotalDurationSeconds, nilkElapsedSeconds + Math.Max(0d, dt));
+            double nextTime = nilkElapsedSeconds + Math.Max(0d, dt);
+            nilkElapsedSeconds = referenceMode ? nextTime : Math.Min(NilkTotalDurationSeconds, nextTime);
         }
         nilkLastUpdateTimestamp = now;
 
-        if (nilkPaletteIndex < 0)
+        if (referenceMode)
+            nilkPaletteIndex = Math.Clamp(NilkParadisePaletteIndex, 0, NilkPalettes.Length - 1);
+        else if (nilkPaletteIndex < 0)
             nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
 
-        if (advanceTimeline)
+        if (advanceTimeline && !referenceMode)
             UpdateNilkPaletteForTime();
 
-        if (advanceTimeline && nilkElapsedSeconds >= NilkTotalDurationSeconds)
+        if (advanceTimeline && !referenceMode && nilkElapsedSeconds >= NilkTotalDurationSeconds)
             nilkStateTimer.Stop();
 
         PostNilkShaderState();
@@ -908,13 +938,15 @@ public sealed class OverlayForm : Form
 
         float[][]? palette = nilkPaletteIndex != lastPostedNilkPaletteIndex ? NilkPalettes[nilkPaletteIndex] : null;
         lastPostedNilkPaletteIndex = nilkPaletteIndex;
+        bool referenceMode = mode == EffectMode.NilkReference;
         string message = JsonSerializer.Serialize(new
         {
             type = "nilk-state",
             globalTime = (float)nilkElapsedSeconds,
-            intensity = NilkIntensity,
+            intensity = referenceMode ? targetIntensity : NilkIntensity,
             palette,
-            running = (mode == EffectMode.Nilk || mode == EffectMode.NilkSeek) && !paused && nilkElapsedSeconds < NilkTotalDurationSeconds
+            running = (mode == EffectMode.Nilk || mode == EffectMode.NilkSeek || referenceMode) &&
+                      !paused && (referenceMode || nilkElapsedSeconds < NilkTotalDurationSeconds)
         });
         gpuView.CoreWebView2.PostWebMessageAsJson(message);
     }
@@ -962,7 +994,7 @@ body.capture-active *{cursor:none!important;}
   <small>Press Ctrl+Alt+R to stop sharing. Capture permission ends when sharing stops.</small>
 </div>
 <video id="screenVideo" autoplay muted playsinline></video>
-<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-7 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space: pause | Esc: exit</div>
+<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space: pause | Esc: exit</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
@@ -1084,14 +1116,16 @@ void main(){
       float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
       float effective=nilkIntensity*smoothOpacity;
       float globalTime=nilkGlobalTime;
+      float referenceMode=step(7.5,mode);
+      float warpBoost=mix(1.0,1.35,referenceMode);
       vec2 unmodifiedCoords=uv;
       vec2 coords=uv;
       float offsetTime=globalTime*.7;
-      coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05;
-      coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05;
+      coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05*warpBoost;
+      coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05*warpBoost;
       vec4 baseColor=texture2D(screenFrame,coords);
       coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
-                 sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
+                 sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective*warpBoost;
 
       vec4 distortedScreenColor=texture2D(screenFrame,coords);
       vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
@@ -1587,13 +1621,13 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
   window.addEventListener('pagehide',()=>{if(activeStream)activeStream.getTracks().forEach(track=>track.stop());});
 
   let targetIntensity=.52, shownIntensity=.52, currentMode=4, paused=false, shaderTime=0, last=performance.now();
-  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK SEEK'];
+  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK SEEK','NILK REFERENCE'];
   window.setOverlayState=(i,p,m)=>{
     targetIntensity=Math.max(0,Math.min(1,Number(i)||0));
     paused=!!p;
-    currentMode=Math.max(1,Math.min(7,Number(m)||4));
+    currentMode=Math.max(1,Math.min(8,Number(m)||4));
     const label=modeNames[currentMode-1];
-    hud.textContent=`Ctrl+Alt+1-7 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
+    hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
   };
   function resize(){
     let dpr=Math.min(devicePixelRatio||1,1.35);
@@ -2558,7 +2592,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = hintOverride ?? $"Ctrl+Alt+1-7 modes | Ctrl+Alt+PageUp/Down: Nilk seek | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk reference | Ctrl+Alt+PageUp/Down: Nilk seek | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -2580,6 +2614,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
             EffectMode.Chaos => "CHAOS",
             EffectMode.Nilk => "NILK CYCLE",
             EffectMode.NilkSeek => "NILK SEEK",
+            EffectMode.NilkReference => "NILK REFERENCE",
             _ => "UNKNOWN"
         };
     }
@@ -2774,6 +2809,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         RegisterHotKey(Handle, HotkeyChaosMode, mods, (uint)Keys.D5);
         RegisterHotKey(Handle, HotkeyNilkMode, mods, (uint)Keys.D6);
         RegisterHotKey(Handle, HotkeyNilkSeekMode, mods, (uint)Keys.D7);
+        RegisterHotKey(Handle, HotkeyNilkReferenceMode, mods, (uint)Keys.D8);
         RegisterHotKey(Handle, HotkeyNilkNextPhase, mods, (uint)Keys.PageUp);
         RegisterHotKey(Handle, HotkeyNilkPrevPhase, mods, (uint)Keys.PageDown);
         RegisterHotKey(Handle, HotkeyPrevMode, mods, (uint)Keys.Left);
@@ -2818,6 +2854,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         UnregisterHotKey(Handle, HotkeyChaosMode);
         UnregisterHotKey(Handle, HotkeyNilkMode);
         UnregisterHotKey(Handle, HotkeyNilkSeekMode);
+        UnregisterHotKey(Handle, HotkeyNilkReferenceMode);
         UnregisterHotKey(Handle, HotkeyNilkNextPhase);
         UnregisterHotKey(Handle, HotkeyNilkPrevPhase);
         UnregisterHotKey(Handle, HotkeyToggleScreenCapture);
