@@ -29,7 +29,8 @@ public sealed class OverlayForm : Form
         GlyphGlitch = 3,
         FullTrip = 4,
         Chaos = 5,
-        Nilk = 6
+        Nilk = 6,
+        NilkSeek = 7
     }
 
     private const int WS_EX_TRANSPARENT = 0x20;
@@ -57,6 +58,7 @@ public sealed class OverlayForm : Form
     private const float NilkDatamoshIntensity = 0.51f;
     private const double NilkTotalDurationSeconds = 60d * 60d;
     private const double NilkPaletteBaseShuffleSeconds = 2d * 60d;
+    private static readonly double[] NilkSeekPhaseTimesSeconds = [38d * 60d, 48d * 60d + 30d, 52d * 60d, 58d * 60d + 30d];
     private static readonly float[][][] NilkPalettes = LoadNilkPalettes();
 
     private const int HotkeyIntensityUp = 101;
@@ -82,6 +84,9 @@ public sealed class OverlayForm : Form
     private const int HotkeyChaosMode = 121;
     private const int HotkeyToggleScreenCapture = 122;
     private const int HotkeyNilkMode = 123;
+    private const int HotkeyNilkSeekMode = 124;
+    private const int HotkeyNilkNextPhase = 125;
+    private const int HotkeyNilkPrevPhase = 126;
 
     private static readonly char[] GlyphBank =
         "░▒▓█▓▒░ ᚠᚢᚦᚨᚱᚲ ΨΩΔΛΣΞ ЖЙФЮЯ 目電幻夢零壱弐参 NILK VOID COSMOS LSD 0123456789 @#$%&*<>/\\".ToCharArray();
@@ -155,6 +160,7 @@ public sealed class OverlayForm : Form
     private double nilkShuffleCountdownSeconds;
     private int nilkPaletteIndex = -1;
     private int lastPostedNilkPaletteIndex = -1;
+    private int nilkSeekPhaseIndex = -1;
     private long nilkLastUpdateTimestamp;
     private int captureWidth;
     private int captureHeight;
@@ -292,6 +298,15 @@ public sealed class OverlayForm : Form
                 case HotkeyNilkMode:
                     SetEffectMode(EffectMode.Nilk);
                     break;
+                case HotkeyNilkSeekMode:
+                    SetEffectMode(EffectMode.NilkSeek);
+                    break;
+                case HotkeyNilkNextPhase:
+                    StepNilkSeekPhase(1);
+                    break;
+                case HotkeyNilkPrevPhase:
+                    StepNilkSeekPhase(-1);
+                    break;
                 case HotkeyPrevMode:
                 case HotkeyPrevModeF:
                     CycleEffectMode(-1);
@@ -334,16 +349,43 @@ public sealed class OverlayForm : Form
         else if ((int)nextMode < (int)EffectMode.Nilk && (int)mode >= (int)EffectMode.Nilk)
             targetIntensity = 0.52f;
 
+        bool enteringSeekMode = mode != nextMode && nextMode == EffectMode.NilkSeek;
+        bool startNilkRun = nextMode == EffectMode.Nilk && mode != EffectMode.Nilk ||
+                            enteringSeekMode && (int)mode < (int)EffectMode.Nilk;
         if (mode != nextMode)
         {
-            if (nextMode == EffectMode.Nilk)
+            if (startNilkRun)
                 StartNilkRun();
-            else if (mode == EffectMode.Nilk)
+            else if ((int)mode >= (int)EffectMode.Nilk && (int)nextMode < (int)EffectMode.Nilk)
                 StopNilkRun();
         }
 
         mode = nextMode;
+        if (enteringSeekMode)
+            SetNilkSeekPhase(0);
         ShowHint();
+    }
+
+    private void StepNilkSeekPhase(int direction)
+    {
+        if (mode != EffectMode.NilkSeek || nilkSeekPhaseIndex < 0)
+            return;
+
+        int nextPhase = Math.Clamp(nilkSeekPhaseIndex + direction, 0, NilkSeekPhaseTimesSeconds.Length - 1);
+        if (nextPhase == nilkSeekPhaseIndex)
+            return;
+
+        SetNilkSeekPhase(nextPhase);
+        ShowHint();
+    }
+
+    private void SetNilkSeekPhase(int phaseIndex)
+    {
+        nilkSeekPhaseIndex = Math.Clamp(phaseIndex, 0, NilkSeekPhaseTimesSeconds.Length - 1);
+        nilkElapsedSeconds = NilkSeekPhaseTimesSeconds[nilkSeekPhaseIndex];
+        nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
+        nilkStateTimer.Stop();
+        PostNilkShaderState();
     }
 
     private void ToggleScreenCapture()
@@ -525,7 +567,7 @@ public sealed class OverlayForm : Form
 
     private void CycleEffectMode(int direction)
     {
-        const int modeCount = 6;
+        const int modeCount = 7;
         int next = ((int)mode - 1 + direction + modeCount) % modeCount + 1;
         SetEffectMode((EffectMode)next);
     }
@@ -642,7 +684,7 @@ public sealed class OverlayForm : Form
 
     private void RenderLsdOverlay(Graphics g, int w, int h)
     {
-        if (intensity > 0.004f && mode != EffectMode.Nilk)
+        if (intensity > 0.004f && (int)mode < (int)EffectMode.Nilk)
         {
             float p = LsdPower;
             RenderFullTripLowRes(g, w, h, p);
@@ -743,6 +785,7 @@ public sealed class OverlayForm : Form
     private void StartNilkRun()
     {
         nilkElapsedSeconds = 0d;
+        nilkSeekPhaseIndex = -1;
         nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
         lastPostedNilkPaletteIndex = -1;
         nilkShuffleCountdownSeconds = 0d;
@@ -759,13 +802,15 @@ public sealed class OverlayForm : Form
         nilkShuffleCountdownSeconds = 0d;
         nilkPaletteIndex = -1;
         lastPostedNilkPaletteIndex = -1;
+        nilkSeekPhaseIndex = -1;
         nilkLastUpdateTimestamp = 0;
     }
 
     private void UpdateNilkShaderState()
     {
         long now = Stopwatch.GetTimestamp();
-        if (nilkLastUpdateTimestamp != 0 && !paused)
+        bool advanceTimeline = mode == EffectMode.Nilk && !paused;
+        if (nilkLastUpdateTimestamp != 0 && advanceTimeline)
         {
             double dt = (now - nilkLastUpdateTimestamp) / (double)Stopwatch.Frequency;
             nilkElapsedSeconds = Math.Min(NilkTotalDurationSeconds, nilkElapsedSeconds + Math.Max(0d, dt));
@@ -776,13 +821,13 @@ public sealed class OverlayForm : Form
         if (nilkPaletteIndex < 0)
             nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
 
-        if (nilkShuffleCountdownSeconds <= 0d)
+        if (advanceTimeline && nilkShuffleCountdownSeconds <= 0d)
         {
             nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
             nilkShuffleCountdownSeconds = NextNilkPaletteIntervalSeconds();
         }
 
-        if (nilkElapsedSeconds >= NilkTotalDurationSeconds)
+        if (mode == EffectMode.Nilk && nilkElapsedSeconds >= NilkTotalDurationSeconds)
             nilkStateTimer.Stop();
 
         PostNilkShaderState();
@@ -878,7 +923,7 @@ body.capture-active *{cursor:none!important;}
   <small>Press Ctrl+Alt+R to stop sharing. Capture permission ends when sharing stops.</small>
 </div>
 <video id="screenVideo" autoplay muted playsinline></video>
-<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-6 | Arrows: modes | Up/Down: strength | Space: pause | Esc: exit</div>
+<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-7 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space: pause | Esc: exit</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
@@ -1503,13 +1548,13 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
   window.addEventListener('pagehide',()=>{if(activeStream)activeStream.getTracks().forEach(track=>track.stop());});
 
   let targetIntensity=.52, shownIntensity=.52, currentMode=4, paused=false, shaderTime=0, last=performance.now();
-  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK'];
+  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK SEEK'];
   window.setOverlayState=(i,p,m)=>{
     targetIntensity=Math.max(0,Math.min(1,Number(i)||0));
     paused=!!p;
-    currentMode=Math.max(1,Math.min(6,Number(m)||4));
+    currentMode=Math.max(1,Math.min(7,Number(m)||4));
     const label=modeNames[currentMode-1];
-    hud.textContent=`Ctrl+Alt+1-6 | arrows | Up/Down | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
+    hud.textContent=`Ctrl+Alt+1-7 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
   };
   function resize(){
     let dpr=Math.min(devicePixelRatio||1,1.35);
@@ -2474,7 +2519,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = hintOverride ?? $"Ctrl+Alt+1-6 modes | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-7 modes | Ctrl+Alt+PageUp/Down: Nilk seek | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -2495,6 +2540,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
             EffectMode.FullTrip => "FULL TRIP",
             EffectMode.Chaos => "CHAOS",
             EffectMode.Nilk => "NILK CYCLE",
+            EffectMode.NilkSeek => "NILK SEEK",
             _ => "UNKNOWN"
         };
     }
@@ -2688,6 +2734,9 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         RegisterHotKey(Handle, HotkeyFullMode, mods, (uint)Keys.D4);
         RegisterHotKey(Handle, HotkeyChaosMode, mods, (uint)Keys.D5);
         RegisterHotKey(Handle, HotkeyNilkMode, mods, (uint)Keys.D6);
+        RegisterHotKey(Handle, HotkeyNilkSeekMode, mods, (uint)Keys.D7);
+        RegisterHotKey(Handle, HotkeyNilkNextPhase, mods, (uint)Keys.PageUp);
+        RegisterHotKey(Handle, HotkeyNilkPrevPhase, mods, (uint)Keys.PageDown);
         RegisterHotKey(Handle, HotkeyPrevMode, mods, (uint)Keys.Left);
         RegisterHotKey(Handle, HotkeyNextMode, mods, (uint)Keys.Right);
         RegisterHotKey(Handle, HotkeyIntensityUp, mods, (uint)Keys.Up);
@@ -2729,6 +2778,9 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         UnregisterHotKey(Handle, HotkeyPrevModeF);
         UnregisterHotKey(Handle, HotkeyChaosMode);
         UnregisterHotKey(Handle, HotkeyNilkMode);
+        UnregisterHotKey(Handle, HotkeyNilkSeekMode);
+        UnregisterHotKey(Handle, HotkeyNilkNextPhase);
+        UnregisterHotKey(Handle, HotkeyNilkPrevPhase);
         UnregisterHotKey(Handle, HotkeyToggleScreenCapture);
     }
 
