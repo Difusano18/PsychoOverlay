@@ -60,8 +60,7 @@ public sealed class OverlayForm : Form
     private const double NilkTotalDurationSeconds = 60d * 60d;
     private const double NilkPaletteBaseShuffleSeconds = 2d * 60d;
     private const double NilkFirstPaletteRefreshSeconds = 1d / 30d;
-    private const int NilkParadisePaletteIndex = 6;
-    private const double NilkReferenceStartSeconds = 48d * 60d + 30d;
+    private const double NilkReferenceStartSeconds = 13d * 60d + 30d;
     private static readonly double[] NilkSeekPhaseTimesSeconds = [38d * 60d, 48d * 60d + 30d, 52d * 60d, 58d * 60d + 30d];
     private static readonly float[][][] NilkPalettes = LoadNilkPalettes();
 
@@ -812,14 +811,15 @@ public sealed class OverlayForm : Form
 
     private void StartNilkReferenceRun()
     {
-        // The supplied target screenshot is the high-contrast PARADISE look.
-        // Keep this test mode deterministic so a random palette cannot turn it
-        // into the yellow/magenta desktop result again.
+        // Mode 8 is the visual target mode: use the real Nilk palettes and
+        // timeline, but begin where the supplied reference capture becomes
+        // strongly liquid/rippled instead of pinning one black/white palette.
+        nilkRandom = new Random(Random.Shared.Next());
         nilkElapsedSeconds = NilkReferenceStartSeconds;
         nilkSeekPhaseIndex = -1;
-        nilkPaletteIndex = Math.Clamp(NilkParadisePaletteIndex, 0, NilkPalettes.Length - 1);
-        nilkPaletteSchedule.Clear();
-        nilkPaletteSchedulePosition = 0;
+        nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
+        BuildNilkPaletteSchedule();
+        UpdateNilkPaletteForTime();
         lastPostedNilkPaletteIndex = -1;
         nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
         nilkStateTimer.Start();
@@ -852,12 +852,10 @@ public sealed class OverlayForm : Form
         }
         nilkLastUpdateTimestamp = now;
 
-        if (referenceMode)
-            nilkPaletteIndex = Math.Clamp(NilkParadisePaletteIndex, 0, NilkPalettes.Length - 1);
-        else if (nilkPaletteIndex < 0)
+        if (nilkPaletteIndex < 0)
             nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
 
-        if (advanceTimeline && !referenceMode)
+        if (advanceTimeline)
             UpdateNilkPaletteForTime();
 
         if (advanceTimeline && !referenceMode && nilkElapsedSeconds >= NilkTotalDurationSeconds)
@@ -1116,39 +1114,114 @@ void main(){
       float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
       float effective=nilkIntensity*smoothOpacity;
       float globalTime=nilkGlobalTime;
-      float referenceMode=step(7.5,mode);
-      float warpBoost=mix(1.0,1.35,referenceMode);
       vec2 unmodifiedCoords=uv;
-      vec2 coords=uv;
-      float offsetTime=globalTime*.7;
-      coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05*warpBoost;
-      coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05*warpBoost;
-      vec4 baseColor=texture2D(screenFrame,coords);
-      coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
-                 sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective*warpBoost;
 
-      vec4 distortedScreenColor=texture2D(screenFrame,coords);
-      vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
-      float blendNoise=texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
-                       texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
-      float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
-      vec4 color=mix(distortedScreenColor,previousScreenColor,blendInterpolant*pow(effective,2.5)*historyValid);
-      float centerDistance=distance(coords,vec2(.5));
-      float blurInterpolant=1.0-smoothstep(.05,.20,centerDistance);
-      if(blurInterpolant>0.0){
-        vec4 blurredColor=vec4(0.0);
-        for(int i=-6;i<6;i++)
-          blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
-        color=mix(color,blurredColor,blurInterpolant);
+      if(mode>7.5){
+        // NILK RIPPLE: match the supplied captures rather than merely
+        // repainting the desktop. Generate a large moving liquid coordinate
+        // field first, then let scene luminance drive the real Nilk palette.
+        float uiGuard=smoothstep(.80,.985,uv.y);
+        float warpPower=effective*mix(1.0,.28,uiGuard);
+        float a=texture2D(nilkNoiseTexture,uv*.72+vec2(globalTime*.004,-globalTime*.003)).r;
+        float b=texture2D(nilkNoiseTexture,uv*1.46+vec2(-globalTime*.008,globalTime*.006)+vec2(a*.18)).r;
+        float cc=texture2D(nilkNoiseTexture,uv*3.25+vec2(globalTime*.011,-globalTime*.015)+vec2(b*.30,-a*.12)).r;
+
+        vec2 center=vec2(.53+.025*sin(globalTime*.051),.50+.022*cos(globalTime*.047));
+        vec2 d=uv-center;
+        d.x*=aspect;
+        float dist=length(d)+.001;
+        float broad=sin((uv.y*2.15+uv.x*.62+a*1.30)*6.2831853+globalTime*.12);
+        float ribbon=sin((uv.y*6.20+uv.x*1.65+b*1.95)*6.2831853+globalTime*.18);
+        float ribbon2=sin((uv.y*15.8-uv.x*4.35+cc*2.8)*6.2831853-globalTime*.34);
+        float radial=sin(dist*24.0-globalTime*.72+cc*3.10);
+        float flow=sin((uv.x*4.6+uv.y*3.1+b*2.4)*6.2831853-globalTime*.23);
+
+        float swirl=(.030+.018*sin(globalTime*.11+b*4.0))/(dist+.18);
+        vec2 tangent=vec2(-d.y,d.x);
+        tangent.x/=max(aspect,.35);
+
+        vec2 delta=vec2(
+          (b-.5)*.092 + flow*.020 + ribbon2*.011,
+          (a-.5)*.076 + broad*.043 + ribbon*.033 + ribbon2*.015 + radial*.013
+        );
+        delta+=tangent*swirl;
+        delta*=warpPower;
+
+        vec2 coords=clamp(uv+delta,vec2(.002),vec2(.998));
+        vec3 current=texture2D(screenFrame,coords).rgb;
+
+        // Datamosh with an offset previous capture. Keep it subordinate to
+        // the ripple so moving scenery tears instead of turning into a blur.
+        vec2 historyCoords=clamp(coords+vec2((cc-.5)*.030,(b-.5)*.022)*warpPower,vec2(.002),vec2(.998));
+        vec3 previous=texture2D(previousScreenFrame,historyCoords).rgb;
+        float historyNoise=texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previous.r)).r+
+                           texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previous.b)).r;
+        float datamosh=smoothstep(.55,1.0,historyNoise*.5)*.22*warpPower*historyValid;
+        vec3 liquid=mix(current,previous,datamosh);
+
+        // Scene edges are what make the target captures look like layered
+        // melted topography. Extract them before palette mapping.
+        vec2 texel=1.35/max(frameSize,vec2(1.0));
+        float lL=dot(texture2D(screenFrame,clamp(coords-vec2(texel.x,0.0),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
+        float lR=dot(texture2D(screenFrame,clamp(coords+vec2(texel.x,0.0),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
+        float lD=dot(texture2D(screenFrame,clamp(coords-vec2(0.0,texel.y),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
+        float lU=dot(texture2D(screenFrame,clamp(coords+vec2(0.0,texel.y),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
+        float edge=clamp((abs(lR-lL)+abs(lU-lD))*3.8,0.0,1.0);
+
+        float luminosity=dot(liquid,vec3(.30,.60,.10));
+        float terrainField=clamp(luminosity*.70+a*.10+b*.11+cc*.09+
+                                 ribbon*.055+broad*.050+radial*.035,0.0,1.0);
+        float contour=1.0-smoothstep(.025,.115,abs(terrainField-(.48+.075*sin(globalTime*.19+b*2.0))));
+        float paletteInterpolant=sin((terrainField+edge*.17)*6.2831853-globalTime*1.5)*.5+.5;
+        vec3 mapped=nilkPalette(paletteInterpolant);
+
+        // Deep black/colored channels + luminous rims, the characteristic
+        // "ripples inside ripples" visible in the reference frames.
+        mapped*=1.0-edge*.46;
+        mapped=mix(mapped,min(mapped*1.24+vec3(.10),vec3(1.0)),contour*.34);
+        float bandContrast=.78+.28*(.5+.5*sin((terrainField*7.2+b*.9)*6.2831853+globalTime*.26));
+        mapped*=bandContrast;
+
+        float vignette=clamp(1.08-distance(coords,vec2(.5))*.42,.58,1.0);
+        mapped*=vignette;
+
+        float colorAmount=clamp(.72+warpPower*.22,0.0,.94);
+        colorAmount*=mix(1.0,.60,uiGuard);
+        screenColor=mix(liquid,mapped,colorAmount);
+        sampleUv=coords;
+      }else{
+        // Modes 6/7: literal upstream Nilk shader translation.
+        vec2 coords=uv;
+        float offsetTime=globalTime*.7;
+        coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05;
+        coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05;
+        vec4 baseColor=texture2D(screenFrame,coords);
+        coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
+                   sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
+
+        vec4 distortedScreenColor=texture2D(screenFrame,coords);
+        vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
+        float blendNoise=texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
+                         texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
+        float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
+        vec4 color=mix(distortedScreenColor,previousScreenColor,blendInterpolant*pow(effective,2.5)*historyValid);
+        float centerDistance=distance(coords,vec2(.5));
+        float blurInterpolant=1.0-smoothstep(.05,.20,centerDistance);
+        if(blurInterpolant>0.0){
+          vec4 blurredColor=vec4(0.0);
+          for(int i=-6;i<6;i++)
+            blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
+          color=mix(color,blurredColor,blurInterpolant);
+        }
+        float luminosity=dot(color.rgb,vec3(.3,.6,.1));
+        float paletteInterpolant=sin(luminosity*6.283-globalTime*1.5)*.5+.5;
+        vec4 evilColor=vec4(nilkPalette(paletteInterpolant),1.0);
+        evilColor-=distance(coords,vec2(.5))*.6;
+        vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
+        evilColor=mix(evilColor,overlayColor,overlayColor.a);
+        screenColor=mix(baseColor,evilColor,effective).rgb;
+        sampleUv=coords;
       }
-      float luminosity=dot(color.rgb,vec3(.3,.6,.1));
-      float paletteInterpolant=sin(luminosity*6.283-globalTime*1.5)*.5+.5;
-      vec4 evilColor=vec4(nilkPalette(paletteInterpolant),1.0);
-      evilColor-=distance(coords,vec2(.5))*.6;
-      vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
-      evilColor=mix(evilColor,overlayColor,overlayColor.a);
-      screenColor=mix(baseColor,evilColor,effective).rgb;
-      sampleUv=coords;
     }else{
       vec2 delta=vec2(0.0);
       float fieldA=fbm(p*1.8+vec2(captureTime*.08,-captureTime*.05));
@@ -1621,7 +1694,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
   window.addEventListener('pagehide',()=>{if(activeStream)activeStream.getTracks().forEach(track=>track.stop());});
 
   let targetIntensity=.52, shownIntensity=.52, currentMode=4, paused=false, shaderTime=0, last=performance.now();
-  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK SEEK','NILK REFERENCE'];
+  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK SEEK','NILK RIPPLE'];
   window.setOverlayState=(i,p,m)=>{
     targetIntensity=Math.max(0,Math.min(1,Number(i)||0));
     paused=!!p;
@@ -2592,7 +2665,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk reference | Ctrl+Alt+PageUp/Down: Nilk seek | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk ripple | Ctrl+Alt+PageUp/Down: Nilk seek | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -2614,7 +2687,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
             EffectMode.Chaos => "CHAOS",
             EffectMode.Nilk => "NILK CYCLE",
             EffectMode.NilkSeek => "NILK SEEK",
-            EffectMode.NilkReference => "NILK REFERENCE",
+            EffectMode.NilkReference => "NILK RIPPLE",
             _ => "UNKNOWN"
         };
     }
