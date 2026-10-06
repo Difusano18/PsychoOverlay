@@ -58,8 +58,11 @@ public sealed class OverlayForm : Form
     private const float NilkDatamoshIntensity = 0.51f;
     private const double NilkTotalDurationSeconds = 60d * 60d;
     private const double NilkPaletteBaseShuffleSeconds = 2d * 60d;
+    private const double NilkFirstPaletteRefreshSeconds = 1d / 30d;
     private static readonly double[] NilkSeekPhaseTimesSeconds = [38d * 60d, 48d * 60d + 30d, 52d * 60d, 58d * 60d + 30d];
     private static readonly float[][][] NilkPalettes = LoadNilkPalettes();
+
+    private readonly record struct NilkPaletteEvent(double TimeSeconds, int PaletteIndex);
 
     private const int HotkeyIntensityUp = 101;
     private const int HotkeyIntensityDown = 102;
@@ -95,7 +98,9 @@ public sealed class OverlayForm : Form
     private readonly System.Windows.Forms.Timer cursorTimer;
     private readonly System.Windows.Forms.Timer nilkStateTimer;
     private readonly Stopwatch stopwatch = Stopwatch.StartNew();
-    private readonly Random nilkRandom = new();
+    private Random nilkRandom = new();
+    private readonly List<NilkPaletteEvent> nilkPaletteSchedule = [];
+    private int nilkPaletteSchedulePosition;
     private readonly Rectangle desktopBounds = SystemInformation.VirtualScreen;
     private readonly Color[] nilkPalette =
     [
@@ -157,7 +162,6 @@ public sealed class OverlayForm : Form
     private int lastCursorY = int.MinValue;
     private bool captureActive;
     private double nilkElapsedSeconds;
-    private double nilkShuffleCountdownSeconds;
     private int nilkPaletteIndex = -1;
     private int lastPostedNilkPaletteIndex = -1;
     private int nilkSeekPhaseIndex = -1;
@@ -383,6 +387,7 @@ public sealed class OverlayForm : Form
     {
         nilkSeekPhaseIndex = Math.Clamp(phaseIndex, 0, NilkSeekPhaseTimesSeconds.Length - 1);
         nilkElapsedSeconds = NilkSeekPhaseTimesSeconds[nilkSeekPhaseIndex];
+        UpdateNilkPaletteForTime();
         nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
         nilkStateTimer.Start();
         PostNilkShaderState();
@@ -784,11 +789,12 @@ public sealed class OverlayForm : Form
 
     private void StartNilkRun()
     {
+        nilkRandom = new Random(Random.Shared.Next());
         nilkElapsedSeconds = 0d;
         nilkSeekPhaseIndex = -1;
         nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
+        BuildNilkPaletteSchedule();
         lastPostedNilkPaletteIndex = -1;
-        nilkShuffleCountdownSeconds = 0d;
         nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
         nilkStateTimer.Start();
         PostNilkShaderState();
@@ -799,8 +805,9 @@ public sealed class OverlayForm : Form
         UpdateNilkShaderState();
         nilkStateTimer.Stop();
         nilkElapsedSeconds = 0d;
-        nilkShuffleCountdownSeconds = 0d;
         nilkPaletteIndex = -1;
+        nilkPaletteSchedule.Clear();
+        nilkPaletteSchedulePosition = 0;
         lastPostedNilkPaletteIndex = -1;
         nilkSeekPhaseIndex = -1;
         nilkLastUpdateTimestamp = 0;
@@ -814,23 +821,55 @@ public sealed class OverlayForm : Form
         {
             double dt = (now - nilkLastUpdateTimestamp) / (double)Stopwatch.Frequency;
             nilkElapsedSeconds = Math.Min(NilkTotalDurationSeconds, nilkElapsedSeconds + Math.Max(0d, dt));
-            nilkShuffleCountdownSeconds -= Math.Max(0d, dt);
         }
         nilkLastUpdateTimestamp = now;
 
         if (nilkPaletteIndex < 0)
             nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
 
-        if (advanceTimeline && nilkShuffleCountdownSeconds <= 0d)
-        {
-            nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
-            nilkShuffleCountdownSeconds = NextNilkPaletteIntervalSeconds();
-        }
+        if (advanceTimeline)
+            UpdateNilkPaletteForTime();
 
         if (advanceTimeline && nilkElapsedSeconds >= NilkTotalDurationSeconds)
             nilkStateTimer.Stop();
 
         PostNilkShaderState();
+    }
+
+    private void BuildNilkPaletteSchedule()
+    {
+        nilkPaletteSchedule.Clear();
+        nilkPaletteSchedulePosition = 0;
+        nilkPaletteSchedule.Add(new NilkPaletteEvent(0d, nilkPaletteIndex));
+
+        // The source manager refreshes once on its first update, then schedules
+        // subsequent changes using the same independent probability checks.
+        double changeTime = NilkFirstPaletteRefreshSeconds;
+        while (changeTime < NilkTotalDurationSeconds)
+        {
+            nilkPaletteSchedule.Add(new NilkPaletteEvent(changeTime, nilkRandom.Next(NilkPalettes.Length)));
+            changeTime += NextNilkPaletteIntervalSeconds();
+        }
+    }
+
+    private void UpdateNilkPaletteForTime()
+    {
+        if (nilkPaletteSchedule.Count == 0)
+            return;
+
+        while (nilkPaletteSchedulePosition + 1 < nilkPaletteSchedule.Count &&
+               nilkPaletteSchedule[nilkPaletteSchedulePosition + 1].TimeSeconds <= nilkElapsedSeconds)
+        {
+            nilkPaletteSchedulePosition++;
+        }
+
+        while (nilkPaletteSchedulePosition > 0 &&
+               nilkPaletteSchedule[nilkPaletteSchedulePosition].TimeSeconds > nilkElapsedSeconds)
+        {
+            nilkPaletteSchedulePosition--;
+        }
+
+        nilkPaletteIndex = nilkPaletteSchedule[nilkPaletteSchedulePosition].PaletteIndex;
     }
 
     private double NextNilkPaletteIntervalSeconds()
