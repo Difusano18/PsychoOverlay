@@ -1002,7 +1002,7 @@ body.capture-active *{cursor:none!important;}
   <small>Press Ctrl+Alt+R to stop sharing. Capture permission ends when sharing stops.</small>
 </div>
 <video id="screenVideo" autoplay muted playsinline></video>
-<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space: pause | Esc: exit</div>
+<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk reference times | Space: pause | Esc: exit</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
@@ -1124,10 +1124,11 @@ void main(){
       float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
       float effective=nilkIntensity*smoothOpacity;
 
-      // Modes 7/8 are the authoritative port of the current upstream Nilk
-      // filter. Luminance supplies Main.GlobalTimeWrappedHourly independently
-      // of the 60-minute debuff timer, so use the WebGL runtime clock here.
-      // Mode 6 is kept as the old comparison path.
+      // Modes 7/8 are a literal WebGL port of the current upstream
+      // NilkScreenDistortionShader.fx. Luminance supplies
+      // Main.GlobalTimeWrappedHourly independently of the Nilk debuff timer.
+      // Therefore the shader clock is t, not nilkElapsedTime.
+      // Mode 6 keeps the previous elapsed-time clock for A/B comparison.
       float globalTime=mode>6.5?t:nilkGlobalTime;
       vec2 unmodifiedCoords=uv;
       vec2 coords=uv;
@@ -1140,21 +1141,34 @@ void main(){
       coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
                  sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
 
-      vec4 screenColor4=texture2D(screenFrame,coords);
+      vec4 distortedScreenColor=texture2D(screenFrame,coords);
       vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
-      float blendNoise=texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
-                       texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
+      float blendNoise=
+          texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
+          texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
       float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
 
-      vec4 color=mix(screenColor4,previousScreenColor,blendInterpolant*pow(effective,2.5)*historyValid);
+      vec4 color=mix(
+          distortedScreenColor,
+          previousScreenColor,
+          blendInterpolant*pow(effective,2.5)*historyValid
+      );
+
       float blurInterpolant=smoothstep(.20,.05,distance(coords,vec2(.5)));
       vec4 blurredColor=vec4(0.0);
       for(int i=-6;i<6;i++)
-        blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
+        blurredColor+=texture2D(
+            screenFrame,
+            coords+vec2(float(i),0.0)*effective*.001
+        )/13.0;
       color=mix(color,blurredColor,blurInterpolant);
 
       float luminosity=dot(color.rgb,vec3(.3,.6,.1));
-      vec4 evilColor=vec4(nilkPalette(sin(luminosity*6.283-globalTime*1.5)*.5+.5),1.0);
+      vec4 evilColor=vec4(
+          nilkPalette(sin(luminosity*6.283-globalTime*1.5)*.5+.5),
+          1.0
+      );
+
       evilColor-=distance(coords,vec2(.5))*.6;
 
       vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
@@ -1162,39 +1176,6 @@ void main(){
 
       screenColor=mix(baseColor,evilColor,effective).rgb;
       sampleUv=coords;
-    }else{
-        // Modes 6/7: literal upstream Nilk shader translation.
-        vec2 coords=uv;
-        float offsetTime=globalTime*.7;
-        coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05;
-        coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05;
-        vec4 baseColor=texture2D(screenFrame,coords);
-        coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
-                   sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
-
-        vec4 distortedScreenColor=texture2D(screenFrame,coords);
-        vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
-        float blendNoise=texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
-                         texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
-        float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
-        vec4 color=mix(distortedScreenColor,previousScreenColor,blendInterpolant*pow(effective,2.5)*historyValid);
-        float centerDistance=distance(coords,vec2(.5));
-        float blurInterpolant=1.0-smoothstep(.05,.20,centerDistance);
-        if(blurInterpolant>0.0){
-          vec4 blurredColor=vec4(0.0);
-          for(int i=-6;i<6;i++)
-            blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
-          color=mix(color,blurredColor,blurInterpolant);
-        }
-        float luminosity=dot(color.rgb,vec3(.3,.6,.1));
-        float paletteInterpolant=sin(luminosity*6.283-globalTime*1.5)*.5+.5;
-        vec4 evilColor=vec4(nilkPalette(paletteInterpolant),1.0);
-        evilColor-=distance(coords,vec2(.5))*.6;
-        vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
-        evilColor=mix(evilColor,overlayColor,overlayColor.a);
-        screenColor=mix(baseColor,evilColor,effective).rgb;
-        sampleUv=coords;
-      }
     }else{
       vec2 delta=vec2(0.0);
       float fieldA=fbm(p*1.8+vec2(captureTime*.08,-captureTime*.05));
@@ -1673,7 +1654,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     paused=!!p;
     currentMode=Math.max(1,Math.min(8,Number(m)||4));
     const label=modeNames[currentMode-1];
-    hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk phases | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
+    hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk reference times | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
   };
   function resize(){
     let dpr=Math.min(devicePixelRatio||1,1.35);
@@ -2643,7 +2624,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk ripple | Ctrl+Alt+PageUp/Down: Nilk exact reference | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk ripple | Ctrl+Alt+PageUp/Down: Nilk exact refs | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
