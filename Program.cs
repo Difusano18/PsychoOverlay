@@ -1120,8 +1120,10 @@ void main(){
         // NILK RIPPLE: match the supplied captures rather than merely
         // repainting the desktop. Generate a large moving liquid coordinate
         // field first, then let scene luminance drive the real Nilk palette.
-        float uiGuard=smoothstep(.80,.985,uv.y);
-        float warpPower=effective*mix(1.0,.28,uiGuard);
+        // Full-screen effect: do not suppress the top/bottom UI region.
+        // Keep the warp slightly below the first prototype so the scene
+        // remains readable while the liquid motion still dominates.
+        float warpPower=effective*.90;
         float a=texture2D(nilkNoiseTexture,uv*.72+vec2(globalTime*.004,-globalTime*.003)).r;
         float b=texture2D(nilkNoiseTexture,uv*1.46+vec2(-globalTime*.008,globalTime*.006)+vec2(a*.18)).r;
         float cc=texture2D(nilkNoiseTexture,uv*3.25+vec2(globalTime*.011,-globalTime*.015)+vec2(b*.30,-a*.12)).r;
@@ -1161,12 +1163,13 @@ void main(){
 
         // Scene edges are what make the target captures look like layered
         // melted topography. Extract them before palette mapping.
-        vec2 texel=1.35/max(frameSize,vec2(1.0));
-        float lL=dot(texture2D(screenFrame,clamp(coords-vec2(texel.x,0.0),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
+        // Cheaper two-neighbour edge estimate. This saves two full screen
+        // texture reads per pixel without killing the melted contour look.
+        vec2 texel=1.55/max(frameSize,vec2(1.0));
+        float lC=dot(current,vec3(.30,.60,.10));
         float lR=dot(texture2D(screenFrame,clamp(coords+vec2(texel.x,0.0),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
-        float lD=dot(texture2D(screenFrame,clamp(coords-vec2(0.0,texel.y),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
         float lU=dot(texture2D(screenFrame,clamp(coords+vec2(0.0,texel.y),vec2(.002),vec2(.998))).rgb,vec3(.30,.60,.10));
-        float edge=clamp((abs(lR-lL)+abs(lU-lD))*3.8,0.0,1.0);
+        float edge=clamp((abs(lR-lC)+abs(lU-lC))*4.15,0.0,1.0);
 
         float luminosity=dot(liquid,vec3(.30,.60,.10));
         float terrainField=clamp(luminosity*.70+a*.10+b*.11+cc*.09+
@@ -1177,17 +1180,21 @@ void main(){
 
         // Deep black/colored channels + luminous rims, the characteristic
         // "ripples inside ripples" visible in the reference frames.
-        mapped*=1.0-edge*.46;
-        mapped=mix(mapped,min(mapped*1.24+vec3(.10),vec3(1.0)),contour*.34);
-        float bandContrast=.78+.28*(.5+.5*sin((terrainField*7.2+b*.9)*6.2831853+globalTime*.26));
+        mapped*=1.0-edge*.28;
+        mapped=mix(mapped,min(mapped*1.12+vec3(.055),vec3(1.0)),contour*.21);
+        float bandContrast=.89+.14*(.5+.5*sin((terrainField*7.2+b*.9)*6.2831853+globalTime*.26));
         mapped*=bandContrast;
 
-        float vignette=clamp(1.08-distance(coords,vec2(.5))*.42,.58,1.0);
+        float vignette=clamp(1.06-distance(coords,vec2(.5))*.30,.68,1.0);
         mapped*=vignette;
 
-        float colorAmount=clamp(.72+warpPower*.22,0.0,.94);
-        colorAmount*=mix(1.0,.60,uiGuard);
+        // Keep roughly half of the captured scene visible. The effect should
+        // deform/recolour the desktop, not replace it with an opaque palette.
+        float colorAmount=clamp(.46+warpPower*.14,0.0,.64);
         screenColor=mix(liquid,mapped,colorAmount);
+        float sceneLuma=dot(current,vec3(.30,.60,.10));
+        float preserve=.18+.18*smoothstep(.12,.85,sceneLuma);
+        screenColor=mix(screenColor,current,preserve);
         sampleUv=coords;
       }else{
         // Modes 6/7: literal upstream Nilk shader translation.
@@ -1708,7 +1715,12 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
       dpr=Math.min(dpr,screenVideo.videoWidth/Math.max(1,innerWidth),screenVideo.videoHeight/Math.max(1,innerHeight));
     }
     const pixelCount=innerWidth*innerHeight*dpr*dpr;
-    dpr*=Math.min(1,Math.sqrt(2500000/Math.max(1,pixelCount)));
+    // Mode 8 is texture-fetch heavy. Render it at a mildly lower internal
+    // resolution and let CSS/WebGL scale it over the entire monitor.
+    // Organic ripples hide the resolution loss while substantially reducing
+    // fragment load on 1080p/1440p/4K displays.
+    const pixelBudget=currentMode>7.5?1500000:2500000;
+    dpr*=Math.min(1,Math.sqrt(pixelBudget/Math.max(1,pixelCount)));
     const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
   }
