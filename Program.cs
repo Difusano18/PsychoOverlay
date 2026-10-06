@@ -38,10 +38,7 @@ public sealed class OverlayForm : Form
     private const int WM_HOTKEY = 0x0312;
     private const int ULW_ALPHA = 0x02;
     private const int BI_RGB = 0;
-    private const int COLORONCOLOR = 3;
-    private const int WDA_EXCLUDEFROMCAPTURE = 0x11;
     private const uint DIB_RGB_COLORS = 0;
-    private const uint SRCCOPY = 0x00CC0020;
     private const byte AC_SRC_OVER = 0;
     private const byte AC_SRC_ALPHA = 1;
     private const uint MOD_ALT = 0x0001;
@@ -103,12 +100,9 @@ public sealed class OverlayForm : Form
     private Graphics? tripGraphics;
     private Bitmap? previousTripBitmap;
     private Graphics? previousTripGraphics;
-    private Bitmap? screenCaptureBitmap;
-    private Graphics? screenCaptureGraphics;
     private WebView2? gpuView;
     private byte[]? tripPixelBuffer;
     private byte[]? previousTripPixelBuffer;
-    private byte[]? screenCapturePixels;
     private byte[]? noisePixels;
     private nint memoryDc;
     private nint dibBitmap;
@@ -118,8 +112,6 @@ public sealed class OverlayForm : Form
     private int surfaceHeight;
     private int tripWidth;
     private int tripHeight;
-    private int screenCaptureWidth;
-    private int screenCaptureHeight;
     private int noiseWidth;
     private int noiseHeight;
     private int noiseStride;
@@ -177,13 +169,15 @@ public sealed class OverlayForm : Form
     {
         base.OnHandleCreated(e);
         MakeClickThrough();
-        _ = SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE);
         RegisterOverlayHotkeys();
     }
 
-    protected override void OnShown(EventArgs e)
+    protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        if (await TryStartGpuRendererAsync())
+            return;
+
         StartCpuRenderer();
     }
 
@@ -749,10 +743,7 @@ void main(){
         int lowH = Math.Max(315, (int)MathF.Round(lowW * h / Math.Max(w, 1f)));
         EnsureTripSurface(lowW, lowH);
 
-        if (mode == EffectMode.Chaos && CaptureScreenLowRes(lowW, lowH))
-            RenderScreenWarpPixels(lowW, lowH, p);
-        else
-            RenderNilkShaderPixels(lowW, lowH, p);
+        RenderNilkShaderPixels(lowW, lowH, p);
 
         InterpolationMode oldInterpolation = target.InterpolationMode;
         PixelOffsetMode oldPixelOffset = target.PixelOffsetMode;
@@ -787,48 +778,6 @@ void main(){
         previousTripPixelBuffer = new byte[requiredBytes];
     }
 
-    private void EnsureScreenCaptureSurface(int width, int height)
-    {
-        int requiredBytes = width * height * 4;
-        if (screenCaptureBitmap is not null && screenCaptureGraphics is not null &&
-            screenCaptureWidth == width && screenCaptureHeight == height &&
-            screenCapturePixels?.Length == requiredBytes)
-            return;
-
-        screenCaptureGraphics?.Dispose();
-        screenCaptureBitmap?.Dispose();
-
-        screenCaptureWidth = width;
-        screenCaptureHeight = height;
-        screenCaptureBitmap = new Bitmap(width, height, PixelFormat.Format32bppRgb);
-        screenCaptureGraphics = Graphics.FromImage(screenCaptureBitmap);
-        screenCaptureGraphics.CompositingMode = CompositingMode.SourceCopy;
-        screenCaptureGraphics.CompositingQuality = CompositingQuality.HighSpeed;
-        screenCaptureGraphics.InterpolationMode = InterpolationMode.Low;
-        screenCaptureGraphics.PixelOffsetMode = PixelOffsetMode.HighSpeed;
-        screenCapturePixels = new byte[requiredBytes];
-    }
-
-    private bool CaptureScreenLowRes(int width, int height)
-    {
-        EnsureScreenCaptureSurface(width, height);
-        if (screenCaptureGraphics is null)
-            return false;
-
-        nint screenDc = GetDC(0);
-        nint captureDc = screenCaptureGraphics.GetHdc();
-        try
-        {
-            SetStretchBltMode(captureDc, COLORONCOLOR);
-            return StretchBlt(captureDc, 0, 0, width, height, screenDc, Left, Top, surfaceWidth, surfaceHeight, SRCCOPY);
-        }
-        finally
-        {
-            screenCaptureGraphics.ReleaseHdc(captureDc);
-            ReleaseDC(0, screenDc);
-        }
-    }
-
     private void DrawNilkShaderApproximation(Graphics g, int w, int h, float p)
     {
         DrawFullScreenIridescence(g, w, h, p * 1.05f);
@@ -837,157 +786,6 @@ void main(){
         DrawTextureLayer(g, voidTexture, w, h, 0.013f, 1.42f, 0.070f * p, 0.52f);
         DrawTextureLayer(g, noiseTexture, w, h, -0.035f, 0.86f, 0.028f * p, 0.78f);
         DrawSoftVignette(g, w, h, p * 0.95f);
-    }
-
-    private void RenderScreenWarpPixels(int w, int h, float p)
-    {
-        if (tripBitmap is null || screenCaptureBitmap is null || tripPixelBuffer is null ||
-            previousTripPixelBuffer is null || screenCapturePixels is null)
-            return;
-
-        BitmapData sourceData = screenCaptureBitmap.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
-        BitmapData targetData = tripBitmap.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
-        try
-        {
-            int sourceBytes = Math.Abs(sourceData.Stride) * h;
-            if (screenCapturePixels.Length != sourceBytes)
-                screenCapturePixels = new byte[sourceBytes];
-
-            int targetBytes = Math.Abs(targetData.Stride) * h;
-            if (tripPixelBuffer.Length != targetBytes || previousTripPixelBuffer.Length != targetBytes)
-                return;
-
-            Marshal.Copy(sourceData.Scan0, screenCapturePixels, 0, sourceBytes);
-
-            byte[] source = screenCapturePixels;
-            byte[] target = tripPixelBuffer;
-            byte[] previous = previousTripPixelBuffer;
-            int sourceStride = sourceData.Stride;
-            int targetStride = targetData.Stride;
-            float opacity = Math.Clamp(p, 0f, 1f);
-            float smoothOpacity = opacity * opacity * (3f - opacity * 2f);
-            float effective = Math.Clamp(opacity * (0.48f + smoothOpacity * 1.15f), 0f, 1f);
-            float overlayPower = Math.Clamp(opacity * 1.52f, 0f, 1f);
-            float invW = 1f / Math.Max(w - 1, 1);
-            float invH = 1f / Math.Max(h - 1, 1);
-            float aspect = h / (float)Math.Max(w, 1);
-            float lowTime = time * 0.22f;
-            float midTime = time * 0.48f;
-            float fastTime = time * 0.86f;
-            byte[]? noise = noisePixels;
-            int nw = noiseWidth;
-            int nh = noiseHeight;
-            int ns = noiseStride;
-
-            float c1x = 0.30f + MathF.Sin(time * 0.17f) * 0.20f;
-            float c1y = 0.42f + MathF.Cos(time * 0.13f) * 0.16f;
-            float c2x = 0.68f + MathF.Sin(time * 0.11f + 2.1f) * 0.18f;
-            float c2y = 0.56f + MathF.Cos(time * 0.15f + 1.4f) * 0.18f;
-            float c3x = 0.52f + MathF.Sin(time * 0.21f + 4.2f) * 0.16f;
-            float c3y = 0.28f + MathF.Cos(time * 0.10f + 3.3f) * 0.12f;
-            float c4x = 0.50f + MathF.Sin(time * 0.07f + 5.2f) * 0.08f;
-            float c4y = 0.50f + MathF.Cos(time * 0.06f + 2.8f) * 0.08f;
-
-            for (int y = 0; y < h; y++)
-            {
-                float v = y * invH;
-                int row = targetStride > 0 ? y * targetStride : (h - 1 - y) * -targetStride;
-                for (int x = 0; x < w; x++)
-                {
-                    float u = x * invW;
-
-                    float texA = SampleNoise(noise, nw, nh, ns, u * 1.05f + time * 0.010f, v * 0.92f - time * 0.008f);
-                    float texB = SampleNoise(noise, nw, nh, ns, u * 2.35f - time * 0.018f + texA * 0.25f, v * 1.80f + time * 0.014f);
-                    float texC = SampleNoise(noise, nw, nh, ns, u * 5.10f + texB * 0.38f + time * 0.026f, v * 4.50f - texA * 0.22f - time * 0.020f);
-                    float flowA = MathF.Sin((v * 7.6f + u * 1.2f + texB * 1.8f) * MathF.Tau + lowTime);
-                    float flowB = MathF.Cos((u * 6.8f - v * 1.4f + texA * 1.6f) * MathF.Tau - midTime);
-                    float field = Math.Clamp(texA * 0.42f + texB * 0.35f + texC * 0.18f + flowA * 0.070f + flowB * 0.055f, 0f, 1f);
-                    float fold = MathF.Sin((u * 3.2f + v * 4.7f + field * 1.2f) * MathF.Tau + fastTime);
-
-                    float du = (texB - 0.5f) * 0.110f * effective + flowA * 0.028f * effective + fold * 0.014f * overlayPower;
-                    float dv = (texA - 0.5f) * 0.088f * effective + flowB * 0.024f * effective - fold * 0.010f * overlayPower;
-
-                    AddLensWarp(ref du, ref dv, u, v, c1x, c1y, aspect, 0.43f, 0.090f * overlayPower);
-                    AddLensWarp(ref du, ref dv, u, v, c2x, c2y, aspect, 0.39f, -0.078f * overlayPower);
-                    AddLensWarp(ref du, ref dv, u, v, c3x, c3y, aspect, 0.34f, 0.060f * overlayPower);
-                    AddLensWarp(ref du, ref dv, u, v, c4x, c4y, aspect, 0.58f, 0.050f * overlayPower);
-
-                    float shear = SmoothStep(0.48f, 0.94f, texC + field * 0.35f) * overlayPower;
-                    du += MathF.Sin(v * 19.0f + texC * 6.0f + fastTime) * 0.016f * shear;
-                    dv += MathF.Cos(u * 17.0f - texB * 5.0f - fastTime) * 0.014f * shear;
-
-                    float sampleU = Math.Clamp(u + du, 0f, 1f);
-                    float sampleV = Math.Clamp(v + dv, 0f, 1f);
-                    float chroma = (0.0035f + 0.0125f * overlayPower) * (0.45f + shear + Math.Abs(fold) * 0.22f);
-
-                    SampleScreenRgb(source, w, h, sourceStride, sampleU, sampleV, out float baseR, out float baseG, out float baseB);
-                    SampleScreenRgb(source, w, h, sourceStride, sampleU + du * 0.20f + chroma, sampleV + dv * 0.12f, out float redR, out _, out _);
-                    SampleScreenRgb(source, w, h, sourceStride, sampleU - du * 0.18f - chroma, sampleV - dv * 0.10f, out _, out _, out float blueB);
-
-                    float r = redR;
-                    float g = baseG;
-                    float b = blueB;
-
-                    float contour = 1f - SmoothStep(0.028f, 0.150f, MathF.Abs(field - (0.50f + MathF.Sin(time * 0.20f + texB * 3.2f) * 0.075f)));
-                    float greenBand = SmoothStep(0.24f, 0.52f, field) * (1f - SmoothStep(0.62f, 0.88f, field));
-                    float violetBand = SmoothStep(0.43f, 0.78f, field);
-                    float cyanBand = SmoothStep(0.18f, 0.48f, texA + texC * 0.22f);
-                    float hotBand = SmoothStep(0.72f, 0.96f, field + texC * 0.10f);
-
-                    float lsdR = 14f + violetBand * 148f + hotBand * 110f + contour * 92f + cyanBand * 26f;
-                    float lsdG = 18f + greenBand * 168f + cyanBand * 118f + contour * 58f + hotBand * 24f;
-                    float lsdB = 34f + violetBand * 154f + cyanBand * 110f + contour * 70f + hotBand * 42f;
-
-                    float pulse = SmoothStep(0.965f, 0.998f, SampleNoise(noise, nw, nh, ns, u * 9.5f + time * 0.050f, v * 7.0f - time * 0.034f));
-                    if (pulse > 0.001f)
-                    {
-                        lsdR = Lerp(lsdR, 245f, pulse * 0.70f);
-                        lsdG = Lerp(lsdG, 45f + greenBand * 190f, pulse);
-                        lsdB = Lerp(lsdB, 225f, pulse * 0.72f);
-                    }
-
-                    float colorMix = Math.Clamp((0.10f + contour * 0.24f + shear * 0.18f + hotBand * 0.11f + pulse * 0.35f) * overlayPower, 0f, 0.56f);
-                    r = Lerp(r, lsdR, colorMix);
-                    g = Lerp(g, lsdG, colorMix);
-                    b = Lerp(b, lsdB, colorMix);
-
-                    int previousX = Math.Clamp((int)((sampleU + (texC - 0.5f) * 0.045f * effective) * (w - 1)), 0, w - 1);
-                    int previousY = Math.Clamp((int)((sampleV + (texA - 0.5f) * 0.038f * effective) * (h - 1)), 0, h - 1);
-                    int previousIndex = (targetStride > 0 ? previousY * targetStride : (h - 1 - previousY) * -targetStride) + previousX * 4;
-                    float datamosh = SmoothStep(0.76f, 1.0f, SampleNoise(noise, nw, nh, ns, u * 1.7f + baseR * 0.003f, v * 1.1f + baseB * 0.003f)) *
-                                     0.10f * overlayPower;
-                    if (datamosh > 0.001f)
-                    {
-                        r = Lerp(r, Math.Min(previous[previousIndex + 2] * 1.18f, 255f), datamosh);
-                        g = Lerp(g, Math.Min(previous[previousIndex + 1] * 1.18f, 255f), datamosh);
-                        b = Lerp(b, Math.Min(previous[previousIndex + 0] * 1.18f, 255f), datamosh);
-                    }
-
-                    float luma = r * 0.299f + g * 0.587f + b * 0.114f;
-                    float saturation = 1.08f + overlayPower * 0.24f + contour * 0.10f;
-                    r = luma + (r - luma) * saturation;
-                    g = luma + (g - luma) * saturation;
-                    b = luma + (b - luma) * saturation;
-                    r = (r - 110f) * (1.04f + overlayPower * 0.07f) + 110f;
-                    g = (g - 110f) * (1.04f + overlayPower * 0.07f) + 110f;
-                    b = (b - 110f) * (1.04f + overlayPower * 0.07f) + 110f;
-
-                    int index = row + x * 4;
-                    target[index + 0] = (byte)Math.Clamp(b, 0f, 255f);
-                    target[index + 1] = (byte)Math.Clamp(g, 0f, 255f);
-                    target[index + 2] = (byte)Math.Clamp(r, 0f, 255f);
-                    target[index + 3] = 255;
-                }
-            }
-
-            Marshal.Copy(target, 0, targetData.Scan0, target.Length);
-            Buffer.BlockCopy(target, 0, previous, 0, targetBytes);
-        }
-        finally
-        {
-            tripBitmap.UnlockBits(targetData);
-            screenCaptureBitmap.UnlockBits(sourceData);
-        }
     }
 
     private void RenderNilkShaderPixels(int w, int h, float p)
@@ -1873,59 +1671,6 @@ void main(){
         return (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 765f;
     }
 
-    private static void AddLensWarp(ref float du, ref float dv, float u, float v, float cx, float cy, float aspect, float radius, float strength)
-    {
-        float dx = u - cx;
-        float dy = (v - cy) * aspect;
-        float dist = MathF.Sqrt(dx * dx + dy * dy) + 0.001f;
-        float lens = 1f - SmoothStep(radius * 0.18f, radius, dist);
-        if (lens <= 0f)
-            return;
-
-        float swirl = strength * lens / (dist + 0.055f);
-        float pull = strength * 0.55f * lens / (dist + 0.160f);
-        du += -dy * swirl - dx * pull;
-        dv += (dx * swirl - dy * pull) / Math.Max(aspect, 0.35f);
-    }
-
-    private static void SampleScreenRgb(byte[] pixels, int width, int height, int stride, float u, float v, out float r, out float g, out float b)
-    {
-        if (pixels.Length == 0 || width <= 0 || height <= 0 || stride == 0)
-        {
-            r = g = b = 0f;
-            return;
-        }
-
-        u = Math.Clamp(u, 0f, 1f);
-        v = Math.Clamp(v, 0f, 1f);
-        float fx = u * (width - 1);
-        float fy = v * (height - 1);
-        int x0 = Math.Clamp((int)fx, 0, width - 1);
-        int y0 = Math.Clamp((int)fy, 0, height - 1);
-        int x1 = Math.Min(x0 + 1, width - 1);
-        int y1 = Math.Min(y0 + 1, height - 1);
-        float tx = fx - x0;
-        float ty = fy - y0;
-
-        int row0 = stride > 0 ? y0 * stride : (height - 1 - y0) * -stride;
-        int row1 = stride > 0 ? y1 * stride : (height - 1 - y1) * -stride;
-        int i00 = row0 + x0 * 4;
-        int i10 = row0 + x1 * 4;
-        int i01 = row1 + x0 * 4;
-        int i11 = row1 + x1 * 4;
-
-        float b0 = Lerp(pixels[i00 + 0], pixels[i10 + 0], tx);
-        float g0 = Lerp(pixels[i00 + 1], pixels[i10 + 1], tx);
-        float r0 = Lerp(pixels[i00 + 2], pixels[i10 + 2], tx);
-        float b1 = Lerp(pixels[i01 + 0], pixels[i11 + 0], tx);
-        float g1 = Lerp(pixels[i01 + 1], pixels[i11 + 1], tx);
-        float r1 = Lerp(pixels[i01 + 2], pixels[i11 + 2], tx);
-
-        b = Lerp(b0, b1, ty);
-        g = Lerp(g0, g1, ty);
-        r = Lerp(r0, r1, ty);
-    }
-
     private static string MakeGlyphRun(int seed, int length)
     {
         StringBuilder builder = new(length);
@@ -2019,17 +1764,10 @@ void main(){
         previousTripGraphics = null;
         previousTripBitmap?.Dispose();
         previousTripBitmap = null;
-        screenCaptureGraphics?.Dispose();
-        screenCaptureGraphics = null;
-        screenCaptureBitmap?.Dispose();
-        screenCaptureBitmap = null;
         tripPixelBuffer = null;
         previousTripPixelBuffer = null;
-        screenCapturePixels = null;
         tripWidth = 0;
         tripHeight = 0;
-        screenCaptureWidth = 0;
-        screenCaptureHeight = 0;
 
         if (memoryDc != 0 && oldBitmap != 0)
         {
@@ -2327,12 +2065,6 @@ void main(){
     [DllImport("gdi32.dll", SetLastError = true)]
     private static extern nint CreateDIBSection(nint hdc, ref BitmapInfo pbmi, uint usage, out nint ppvBits, nint hSection, uint dwOffset);
 
-    [DllImport("gdi32.dll", SetLastError = true)]
-    private static extern bool StretchBlt(nint hdcDest, int xDest, int yDest, int wDest, int hDest, nint hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, uint rop);
-
-    [DllImport("gdi32.dll")]
-    private static extern int SetStretchBltMode(nint hdc, int mode);
-
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(nint hWnd, int nIndex);
 
@@ -2344,7 +2076,4 @@ void main(){
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(nint hWnd, int id);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowDisplayAffinity(nint hWnd, int dwAffinity);
 }
