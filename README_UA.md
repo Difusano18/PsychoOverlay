@@ -24,12 +24,14 @@
 
 ## Nilk
 
-Режим 6 залишено як старий comparison mode.
+`Ctrl+Alt+6` лишається старим таймлайновим режимом для A/B-порівняння.
 
-Режим 7 (`NILK EXACT`) — чистий порт актуального `NilkScreenDistortionShader.fx` з Wrath of the Gods: ті самі дві координатні хвилі, datamosh `0.51`, попередній кадр, Perlin noise, 12-tap центральний blur, точний `PaletteLerp`, vignette та оригінальні 8-кольорові палітри. Інтенсивність іде по оригінальному 60-хвилинному `InverseLerpBump(0, 0.3, 0.9, 1)`: 0→1 за 18 хв, максимум до 54 хв, потім спад до 0 на 60 хв.
+`Ctrl+Alt+7` — **NILK 2024**, буквальний порт Nilk shader із Wrath of the Gods 1.1.20 (квітень 2024): вертикальні двочастотні хвилі, 12-tap центральний blur, palette remap через `sin(luminance * PI - globalTime * 0.75)`, vignette й overlay. У цій версії ще немає broad XY wobble та datamosh.
 
-Критична відмінність від старих 7/8 виправлена: `globalTime` шейдера більше НЕ прив'язаний до часу дебафа. В оригінальному Luminance він отримує `Main.GlobalTimeWrappedHourly`, тому в WebGL використовується незалежний runtime clock. Саме цей час рухає великі cos-хвилі, дрібний ripple і фазу palette mapping.
+`Ctrl+Alt+8` — **NILK 2025**, буквальний порт shader із Wrath of the Gods 1.2+ (лютий 2025): broad XY cos-warp, дрібні хвилі, `datamoshIntensity = 0.51`, Perlin noise, 12-tap blur, `sin(luminance * 2PI - globalTime * 1.5)`, vignette та оригінальні 8-кольорові палітри.
 
-Режим 8 (`NILK EXACT REF`) використовує той самий shader без додаткового procedural/LSD шару. Він лише стартує з 13:30, а `PageUp/PageDown` переставляє ефект між таймкодами референсних кадрів: 13:30, 14:00, 22:30, 28:00, 28:30, 29:00, 30:00, 30:30, 31:00. Це режим для прямого порівняння з відео, а не окремий вигаданий ефект.
+Критичне виправлення режиму 8: `previousScreenTexture` тепер є попереднім **вже відфільтрованим результатом** через GPU feedback ping-pong, а не просто попереднім сирим кадром захоплення. Саме це створює накопичувальні рідкі/рипляві сліди, які видно на референсах.
 
-`run_overlay.bat` збирає й запускає актуальний source build. Опублікований `PsychoOverlay.exe` може відставати від source.
+Обидва режими 7/8 стартують на повній ручній інтенсивності, щоб не чекати 18 хвилин оригінального 60-хвилинного debuff. `Ctrl+Alt+Up/Down` змінює силу, `Ctrl+Alt+PageUp/PageDown` вручну перемикає оригінальні Nilk palettes.
+
+`run_overlay.bat` збирає й запускає актуальний source build.

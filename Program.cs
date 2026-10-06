@@ -30,8 +30,8 @@ public sealed class OverlayForm : Form
         FullTrip = 4,
         Chaos = 5,
         Nilk = 6,
-        NilkExact = 7,
-        NilkExactReference = 8
+        NilkLegacy2024 = 7,
+        NilkCurrent2025 = 8
     }
 
     private const int WS_EX_TRANSPARENT = 0x20;
@@ -60,18 +60,6 @@ public sealed class OverlayForm : Form
     private const double NilkTotalDurationSeconds = 60d * 60d;
     private const double NilkPaletteBaseShuffleSeconds = 2d * 60d;
     private const double NilkFirstPaletteRefreshSeconds = 1d / 30d;
-    private static readonly double[] NilkReferenceTimesSeconds =
-    [
-        13d * 60d + 30d,
-        14d * 60d,
-        22d * 60d + 30d,
-        28d * 60d,
-        28d * 60d + 30d,
-        29d * 60d,
-        30d * 60d,
-        30d * 60d + 30d,
-        31d * 60d
-    ];
     private static readonly float[][][] NilkPalettes = LoadNilkPalettes();
 
     private readonly record struct NilkPaletteEvent(double TimeSeconds, int PaletteIndex);
@@ -99,10 +87,10 @@ public sealed class OverlayForm : Form
     private const int HotkeyChaosMode = 121;
     private const int HotkeyToggleScreenCapture = 122;
     private const int HotkeyNilkMode = 123;
-    private const int HotkeyNilkExactMode = 124;
-    private const int HotkeyNilkNextReference = 125;
-    private const int HotkeyNilkPrevReference = 126;
-    private const int HotkeyNilkExactReferenceMode = 127;
+    private const int HotkeyNilkLegacy2024Mode = 124;
+    private const int HotkeyNilkNextPalette = 125;
+    private const int HotkeyNilkPrevPalette = 126;
+    private const int HotkeyNilkCurrent2025Mode = 127;
 
     private static readonly char[] GlyphBank =
         "░▒▓█▓▒░ ᚠᚢᚦᚨᚱᚲ ΨΩΔΛΣΞ ЖЙФЮЯ 目電幻夢零壱弐参 NILK VOID COSMOS LSD 0123456789 @#$%&*<>/\\".ToCharArray();
@@ -177,7 +165,6 @@ public sealed class OverlayForm : Form
     private double nilkElapsedSeconds;
     private int nilkPaletteIndex = -1;
     private int lastPostedNilkPaletteIndex = -1;
-    private int nilkReferenceTimeIndex = -1;
     private long nilkLastUpdateTimestamp;
     private int captureWidth;
     private int captureHeight;
@@ -315,17 +302,17 @@ public sealed class OverlayForm : Form
                 case HotkeyNilkMode:
                     SetEffectMode(EffectMode.Nilk);
                     break;
-                case HotkeyNilkExactMode:
-                    SetEffectMode(EffectMode.NilkExact);
+                case HotkeyNilkLegacy2024Mode:
+                    SetEffectMode(EffectMode.NilkLegacy2024);
                     break;
-                case HotkeyNilkExactReferenceMode:
-                    SetEffectMode(EffectMode.NilkExactReference);
+                case HotkeyNilkCurrent2025Mode:
+                    SetEffectMode(EffectMode.NilkCurrent2025);
                     break;
-                case HotkeyNilkNextReference:
-                    StepNilkReferenceTime(1);
+                case HotkeyNilkNextPalette:
+                    StepNilkPalette(1);
                     break;
-                case HotkeyNilkPrevReference:
-                    StepNilkReferenceTime(-1);
+                case HotkeyNilkPrevPalette:
+                    StepNilkPalette(-1);
                     break;
                 case HotkeyPrevMode:
                 case HotkeyPrevModeF:
@@ -374,39 +361,24 @@ public sealed class OverlayForm : Form
             if ((int)mode >= (int)EffectMode.Nilk && (int)nextMode < (int)EffectMode.Nilk)
                 StopNilkRun();
 
-            if (nextMode == EffectMode.Nilk)
+            if ((int)nextMode >= (int)EffectMode.Nilk)
                 StartNilkRun();
-            else if (nextMode == EffectMode.NilkExact)
-                StartNilkExactRun();
-            else if (nextMode == EffectMode.NilkExactReference)
-                StartNilkExactReferenceRun();
         }
 
         mode = nextMode;
         ShowHint();
     }
 
-    private void StepNilkReferenceTime(int direction)
+    private void StepNilkPalette(int direction)
     {
-        if (mode != EffectMode.NilkExactReference || nilkReferenceTimeIndex < 0)
+        if ((int)mode < (int)EffectMode.Nilk || nilkPaletteIndex < 0)
             return;
 
-        int nextIndex = Math.Clamp(nilkReferenceTimeIndex + direction, 0, NilkReferenceTimesSeconds.Length - 1);
-        if (nextIndex == nilkReferenceTimeIndex)
-            return;
-
-        SetNilkReferenceTime(nextIndex);
-        ShowHint();
-    }
-
-    private void SetNilkReferenceTime(int index)
-    {
-        nilkReferenceTimeIndex = Math.Clamp(index, 0, NilkReferenceTimesSeconds.Length - 1);
-        nilkElapsedSeconds = NilkReferenceTimesSeconds[nilkReferenceTimeIndex];
-        UpdateNilkPaletteForTime();
-        nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
-        nilkStateTimer.Start();
+        int count = NilkPalettes.Length;
+        nilkPaletteIndex = (nilkPaletteIndex + direction + count) % count;
+        lastPostedNilkPaletteIndex = -1;
         PostNilkShaderState();
+        ShowHint();
     }
 
     private void ToggleScreenCapture()
@@ -807,33 +779,8 @@ public sealed class OverlayForm : Form
     {
         nilkRandom = new Random(Random.Shared.Next());
         nilkElapsedSeconds = 0d;
-        nilkReferenceTimeIndex = -1;
         nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
         BuildNilkPaletteSchedule();
-        lastPostedNilkPaletteIndex = -1;
-        nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
-        nilkStateTimer.Start();
-        PostNilkShaderState();
-    }
-
-    private void StartNilkExactRun()
-    {
-        // Source-accurate current Nilk timeline: 60 minutes, original intensity
-        // bump, original palette shuffle probabilities, original shader math.
-        StartNilkRun();
-    }
-
-    private void StartNilkExactReferenceRun()
-    {
-        // Same source-accurate effect, jumped to a timestamp visible in the
-        // supplied reference video/screenshots. PageUp/PageDown moves between
-        // the captured timestamps without changing the shader itself.
-        nilkRandom = new Random(Random.Shared.Next());
-        nilkElapsedSeconds = NilkReferenceTimesSeconds[0];
-        nilkReferenceTimeIndex = 0;
-        nilkPaletteIndex = nilkRandom.Next(NilkPalettes.Length);
-        BuildNilkPaletteSchedule();
-        UpdateNilkPaletteForTime();
         lastPostedNilkPaletteIndex = -1;
         nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
         nilkStateTimer.Start();
@@ -849,7 +796,6 @@ public sealed class OverlayForm : Form
         nilkPaletteSchedule.Clear();
         nilkPaletteSchedulePosition = 0;
         lastPostedNilkPaletteIndex = -1;
-        nilkReferenceTimeIndex = -1;
         nilkLastUpdateTimestamp = 0;
     }
 
@@ -1002,7 +948,7 @@ body.capture-active *{cursor:none!important;}
   <small>Press Ctrl+Alt+R to stop sharing. Capture permission ends when sharing stops.</small>
 </div>
 <video id="screenVideo" autoplay muted playsinline></video>
-<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk reference times | Space: pause | Esc: exit</div>
+<canvas id="c"></canvas><div id="hud">Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk palette | Space: pause | Esc: exit</div>
 <script>
 (() => {
   const canvas = document.getElementById('c');
@@ -1120,62 +1066,89 @@ void main(){
     float colorBlend=0.0;
     float colorPhase=0.0;
     if(mode>5.5){
-      float opacity=1.0;
-      float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
-      float effective=nilkIntensity*smoothOpacity;
-
-      // Modes 7/8 are a literal WebGL port of the current upstream
-      // NilkScreenDistortionShader.fx. Luminance supplies
-      // Main.GlobalTimeWrappedHourly independently of the Nilk debuff timer.
-      // Therefore the shader clock is t, not nilkElapsedTime.
-      // Mode 6 keeps the previous elapsed-time clock for A/B comparison.
       float globalTime=mode>6.5?t:nilkGlobalTime;
       vec2 unmodifiedCoords=uv;
       vec2 coords=uv;
-      float offsetTime=globalTime*.7;
-      coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05;
-      coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05;
 
-      vec4 baseColor=texture2D(screenFrame,coords);
+      if(mode>6.5&&mode<7.5){
+        // Wrath of the Gods 1.1.20 (2024-04) Nilk shader, ported literally.
+        // No broad XY wobble and no datamosh existed in this revision.
+        float effective=intensity;
+        vec4 baseColor=texture2D(screenFrame,coords);
+        vec2 originalCoords=coords;
 
-      coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
-                 sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
+        coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
+                   sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
 
-      vec4 distortedScreenColor=texture2D(screenFrame,coords);
-      vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
-      float blendNoise=
+        vec4 color=texture2D(screenFrame,coords);
+        float blurInterpolant=smoothstep(.20,.05,distance(coords,vec2(.5)));
+        vec4 blurredColor=vec4(0.0);
+        for(int i=-6;i<6;i++)
+          blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
+        color=mix(color,blurredColor,blurInterpolant);
+
+        float luminosity=dot(color.rgb,vec3(.3,.6,.1));
+        vec4 evilColor=vec4(
+          nilkPalette(sin(luminosity*3.141-globalTime*.75)*.5+.5),
+          1.0
+        );
+        evilColor-=distance(coords,vec2(.5))*.6;
+
+        vec2 overlayCoords=mix(coords,originalCoords,.6);
+        vec4 overlayColor=texture2D(nilkOverlayTexture,overlayCoords);
+        evilColor=mix(evilColor,overlayColor,overlayColor.a);
+
+        screenColor=mix(baseColor,evilColor,effective).rgb;
+        sampleUv=coords;
+      }else{
+        // Wrath of the Gods 1.2+ (2025-02) Nilk shader, ported literally.
+        // Mode 8 uses the post-filter feedback texture as previousScreenFrame.
+        float opacity=1.0;
+        float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
+        float effective=mode>7.5?intensity:nilkIntensity;
+        effective*=smoothOpacity;
+
+        float offsetTime=globalTime*.7;
+        coords.x+=cos(offsetTime+coords.y*6.283)*effective*.05;
+        coords.y+=cos(offsetTime+coords.x*6.283)*effective*.05;
+
+        vec4 baseColor=texture2D(screenFrame,coords);
+
+        coords.y+=(sin(coords.x*300.0-coords.y*32.0+globalTime*20.0)*.004+
+                   sin(coords.x*20.0+coords.y*105.0+globalTime*10.0)*.003)*effective;
+
+        vec4 distortedScreenColor=texture2D(screenFrame,coords);
+        vec4 previousScreenColor=texture2D(previousScreenFrame,coords);
+        float blendNoise=
           texture2D(nilkNoiseTexture,unmodifiedCoords*1.4+vec2(previousScreenColor.r)).r+
           texture2D(nilkNoiseTexture,unmodifiedCoords*.9+vec2(previousScreenColor.b)).r;
-      float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
+        float blendInterpolant=smoothstep(1.0-.51,1.0,blendNoise*.5);
 
-      vec4 color=mix(
+        vec4 color=mix(
           distortedScreenColor,
           previousScreenColor,
           blendInterpolant*pow(effective,2.5)*historyValid
-      );
+        );
 
-      float blurInterpolant=smoothstep(.20,.05,distance(coords,vec2(.5)));
-      vec4 blurredColor=vec4(0.0);
-      for(int i=-6;i<6;i++)
-        blurredColor+=texture2D(
-            screenFrame,
-            coords+vec2(float(i),0.0)*effective*.001
-        )/13.0;
-      color=mix(color,blurredColor,blurInterpolant);
+        float blurInterpolant=smoothstep(.20,.05,distance(coords,vec2(.5)));
+        vec4 blurredColor=vec4(0.0);
+        for(int i=-6;i<6;i++)
+          blurredColor+=texture2D(screenFrame,coords+vec2(float(i),0.0)*effective*.001)/13.0;
+        color=mix(color,blurredColor,blurInterpolant);
 
-      float luminosity=dot(color.rgb,vec3(.3,.6,.1));
-      vec4 evilColor=vec4(
+        float luminosity=dot(color.rgb,vec3(.3,.6,.1));
+        vec4 evilColor=vec4(
           nilkPalette(sin(luminosity*6.283-globalTime*1.5)*.5+.5),
           1.0
-      );
+        );
+        evilColor-=distance(coords,vec2(.5))*.6;
 
-      evilColor-=distance(coords,vec2(.5))*.6;
+        vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
+        evilColor=mix(evilColor,overlayColor,overlayColor.a);
 
-      vec4 overlayColor=texture2D(nilkOverlayTexture,unmodifiedCoords);
-      evilColor=mix(evilColor,overlayColor,overlayColor.a);
-
-      screenColor=mix(baseColor,evilColor,effective).rgb;
-      sampleUv=coords;
+        screenColor=mix(baseColor,evilColor,effective).rgb;
+        sampleUv=coords;
+      }
     }else{
       vec2 delta=vec2(0.0);
       float fieldA=fbm(p*1.8+vec2(captureTime*.08,-captureTime*.05));
@@ -1503,6 +1476,26 @@ void main(){
   let screenTexture=createFrameTexture();
   gl.activeTexture(gl.TEXTURE1);
   let previousScreenTexture=createFrameTexture();
+
+  // The upstream Nilk manager feeds the shader a render-target history, not
+  // merely another untouched monitor frame. Keep a filtered ping-pong history
+  // for mode 8 so the datamosh can accumulate the same liquid trails.
+  gl.activeTexture(gl.TEXTURE5);
+  let nilkFeedbackRead=createFrameTexture();
+  gl.activeTexture(gl.TEXTURE6);
+  let nilkFeedbackWrite=createFrameTexture();
+  let nilkFeedbackWidth=1, nilkFeedbackHeight=1, nilkFeedbackValid=false;
+  function ensureNilkFeedback(width,height){
+    if(width===nilkFeedbackWidth&&height===nilkFeedbackHeight)return;
+    nilkFeedbackWidth=width; nilkFeedbackHeight=height;
+    for(const texture of [nilkFeedbackRead,nilkFeedbackWrite]){
+      gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    }
+    nilkFeedbackValid=false;
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
   gl.uniform1i(us,0); gl.uniform1i(up,1);
   gl.activeTexture(gl.TEXTURE2);
   const nilkNoiseTexture=gl.createTexture();
@@ -1595,6 +1588,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     nativeCursorMode='never';
     nativeCursorMotionUntil=0;
     hasHistory=false;
+    nilkFeedbackValid=false;
     frameCount=0;
     lastVideoTime=-1;
     cursorIsVisible=0;
@@ -1628,6 +1622,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
       await screenVideo.play();
       screenCaptureActive=true;
       hasHistory=false;
+      nilkFeedbackValid=false;
       frameCount=0;
       lastVideoTime=-1;
       document.body.classList.add('capture-active');
@@ -1648,13 +1643,15 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
   window.addEventListener('pagehide',()=>{if(activeStream)activeStream.getTracks().forEach(track=>track.stop());});
 
   let targetIntensity=.52, shownIntensity=.52, currentMode=4, paused=false, shaderTime=0, last=performance.now();
-  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK EXACT','NILK EXACT REF'];
+  const modeNames=['FLOW','TEXTURE','GLITCH','FULL TRIP','CHAOS','NILK CYCLE','NILK 2024','NILK 2025'];
   window.setOverlayState=(i,p,m)=>{
     targetIntensity=Math.max(0,Math.min(1,Number(i)||0));
     paused=!!p;
-    currentMode=Math.max(1,Math.min(8,Number(m)||4));
+    const nextMode=Math.max(1,Math.min(8,Number(m)||4));
+    if(nextMode!==currentMode&&nextMode>7.5)nilkFeedbackValid=false;
+    currentMode=nextMode;
     const label=modeNames[currentMode-1];
-    hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk reference times | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
+    hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk palette | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
   };
   function resize(){
     let dpr=Math.min(devicePixelRatio||1,1.35);
@@ -1662,14 +1659,13 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
       dpr=Math.min(dpr,screenVideo.videoWidth/Math.max(1,innerWidth),screenVideo.videoHeight/Math.max(1,innerHeight));
     }
     const pixelCount=innerWidth*innerHeight*dpr*dpr;
-    // Mode 8 is texture-fetch heavy. Render it at a mildly lower internal
-    // resolution and let CSS/WebGL scale it over the entire monitor.
-    // Organic ripples hide the resolution loss while substantially reducing
-    // fragment load on 1080p/1440p/4K displays.
-    const pixelBudget=currentMode>7.5?1500000:2500000;
+    // The 2025 shader has temporal feedback and 12 blur taps, so cap its
+    // internal pixel count while retaining full-screen coverage.
+    const pixelBudget=currentMode>7.5?1800000:2500000;
     dpr*=Math.min(1,Math.sqrt(pixelBudget/Math.max(1,pixelCount)));
     const w=Math.max(1,Math.floor(innerWidth*dpr)), h=Math.max(1,Math.floor(innerHeight*dpr));
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
+    ensureNilkFeedback(w,h);
   }
   addEventListener('resize',resize,{passive:true});
   function frame(now){
@@ -1686,7 +1682,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     gl.uniform1f(uNilkClock,nilkRenderTime);
     gl.uniform1f(uNilkIntensity,nilkIntensity);
     gl.uniform1f(uc,screenCaptureActive?1:0);
-    gl.uniform1f(uh,hasHistory?1:0);
+    gl.uniform1f(uh,currentMode>7.5?(nilkFeedbackValid?1:0):(hasHistory?1:0));
     gl.uniform2f(uCursor,cursorU,cursorV);
     gl.uniform1f(uCursorVisible,cursorIsVisible&&!(nativeCursorMode==='always'||(nativeCursorMode==='motion'&&performance.now()<nativeCursorMotionUntil))?1:0);
     if(screenCaptureActive&&screenVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
@@ -1716,11 +1712,22 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D,screenTexture);
       gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D,previousScreenTexture);
+      gl.bindTexture(gl.TEXTURE_2D,currentMode>7.5?nilkFeedbackRead:previousScreenTexture);
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform2f(uFrameSize,screenVideo.videoWidth||1,screenVideo.videoHeight||1);
     }
     gl.drawArrays(gl.TRIANGLES,0,3);
+
+    if(screenCaptureActive&&currentMode>7.5&&screenVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
+      gl.activeTexture(gl.TEXTURE6);
+      gl.bindTexture(gl.TEXTURE_2D,nilkFeedbackWrite);
+      gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,canvas.width,canvas.height);
+      const oldFeedback=nilkFeedbackRead;
+      nilkFeedbackRead=nilkFeedbackWrite;
+      nilkFeedbackWrite=oldFeedback;
+      nilkFeedbackValid=true;
+      gl.activeTexture(gl.TEXTURE0);
+    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -2624,7 +2631,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk ripple | Ctrl+Alt+PageUp/Down: Nilk exact refs | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk ripple | Ctrl+Alt+PageUp/Down: Nilk palette | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
@@ -2645,8 +2652,8 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
             EffectMode.FullTrip => "FULL TRIP",
             EffectMode.Chaos => "CHAOS",
             EffectMode.Nilk => "NILK CYCLE",
-            EffectMode.NilkExact => "NILK EXACT",
-            EffectMode.NilkExactReference => "NILK EXACT REF",
+            EffectMode.NilkLegacy2024 => "NILK 2024",
+            EffectMode.NilkCurrent2025 => "NILK 2025",
             _ => "UNKNOWN"
         };
     }
@@ -2840,10 +2847,10 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         RegisterHotKey(Handle, HotkeyFullMode, mods, (uint)Keys.D4);
         RegisterHotKey(Handle, HotkeyChaosMode, mods, (uint)Keys.D5);
         RegisterHotKey(Handle, HotkeyNilkMode, mods, (uint)Keys.D6);
-        RegisterHotKey(Handle, HotkeyNilkExactMode, mods, (uint)Keys.D7);
-        RegisterHotKey(Handle, HotkeyNilkExactReferenceMode, mods, (uint)Keys.D8);
-        RegisterHotKey(Handle, HotkeyNilkNextReference, mods, (uint)Keys.PageUp);
-        RegisterHotKey(Handle, HotkeyNilkPrevReference, mods, (uint)Keys.PageDown);
+        RegisterHotKey(Handle, HotkeyNilkLegacy2024Mode, mods, (uint)Keys.D7);
+        RegisterHotKey(Handle, HotkeyNilkCurrent2025Mode, mods, (uint)Keys.D8);
+        RegisterHotKey(Handle, HotkeyNilkNextPalette, mods, (uint)Keys.PageUp);
+        RegisterHotKey(Handle, HotkeyNilkPrevPalette, mods, (uint)Keys.PageDown);
         RegisterHotKey(Handle, HotkeyPrevMode, mods, (uint)Keys.Left);
         RegisterHotKey(Handle, HotkeyNextMode, mods, (uint)Keys.Right);
         RegisterHotKey(Handle, HotkeyIntensityUp, mods, (uint)Keys.Up);
@@ -2885,10 +2892,10 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         UnregisterHotKey(Handle, HotkeyPrevModeF);
         UnregisterHotKey(Handle, HotkeyChaosMode);
         UnregisterHotKey(Handle, HotkeyNilkMode);
-        UnregisterHotKey(Handle, HotkeyNilkExactMode);
-        UnregisterHotKey(Handle, HotkeyNilkExactReferenceMode);
-        UnregisterHotKey(Handle, HotkeyNilkNextReference);
-        UnregisterHotKey(Handle, HotkeyNilkPrevReference);
+        UnregisterHotKey(Handle, HotkeyNilkLegacy2024Mode);
+        UnregisterHotKey(Handle, HotkeyNilkCurrent2025Mode);
+        UnregisterHotKey(Handle, HotkeyNilkNextPalette);
+        UnregisterHotKey(Handle, HotkeyNilkPrevPalette);
         UnregisterHotKey(Handle, HotkeyToggleScreenCapture);
     }
 
