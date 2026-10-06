@@ -376,6 +376,11 @@ public sealed class OverlayForm : Form
 
         int count = NilkPalettes.Length;
         nilkPaletteIndex = (nilkPaletteIndex + direction + count) % count;
+        if (nilkPaletteSchedulePosition >= 0 && nilkPaletteSchedulePosition < nilkPaletteSchedule.Count)
+        {
+            NilkPaletteEvent current = nilkPaletteSchedule[nilkPaletteSchedulePosition];
+            nilkPaletteSchedule[nilkPaletteSchedulePosition] = new NilkPaletteEvent(current.TimeSeconds, nilkPaletteIndex);
+        }
         lastPostedNilkPaletteIndex = -1;
         PostNilkShaderState();
         ShowHint();
@@ -1488,6 +1493,7 @@ void main(){
   function ensureNilkFeedback(width,height){
     if(width===nilkFeedbackWidth&&height===nilkFeedbackHeight)return;
     nilkFeedbackWidth=width; nilkFeedbackHeight=height;
+    gl.activeTexture(gl.TEXTURE6);
     for(const texture of [nilkFeedbackRead,nilkFeedbackWrite]){
       gl.bindTexture(gl.TEXTURE_2D,texture);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
@@ -1670,6 +1676,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
   addEventListener('resize',resize,{passive:true});
   function frame(now){
     resize();
+    let uploadedVideoFrame=false;
     const dt=Math.min((now-last)*.001,.033); last=now;
     if(!paused) shaderTime+=dt;
     shownIntensity += (targetIntensity-shownIntensity)*(1.0-Math.pow(.001,dt));
@@ -1708,6 +1715,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         hasHistory=frameCount>0;
         frameCount++;
         lastVideoTime=screenVideo.currentTime;
+        uploadedVideoFrame=true;
       }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D,screenTexture);
@@ -1718,7 +1726,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     }
     gl.drawArrays(gl.TRIANGLES,0,3);
 
-    if(screenCaptureActive&&currentMode>7.5&&screenVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
+    if(screenCaptureActive&&currentMode>7.5&&uploadedVideoFrame&&screenVideo.readyState>=HTMLMediaElement.HAVE_CURRENT_DATA){
       gl.activeTexture(gl.TEXTURE6);
       gl.bindTexture(gl.TEXTURE_2D,nilkFeedbackWrite);
       gl.copyTexSubImage2D(gl.TEXTURE_2D,0,0,0,0,0,canvas.width,canvas.height);
@@ -2631,7 +2639,7 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
 
         int alpha = (int)(Math.Clamp(hintSeconds / 1.2f, 0f, 1f) * 165f);
         string state = paused ? $"PAUSED | {ModeName(mode)}" : $"{ModeName(mode)} | INT {(int)MathF.Round(targetIntensity * 100f)}%";
-        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk ripple | Ctrl+Alt+PageUp/Down: Nilk palette | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
+        string text = hintOverride ?? $"Ctrl+Alt+1-8 modes | 8 = Nilk 2025 | Ctrl+Alt+PageUp/Down: Nilk palette | Ctrl+Alt+Left/Right cycle | Up/Down power | Space pause | Esc exit | {state}";
 
         SizeF textSize = g.MeasureString(text, hintFont);
         RectangleF box = new(16, h - textSize.Height - 28, Math.Min(textSize.Width + 18, w - 32), textSize.Height + 10);
