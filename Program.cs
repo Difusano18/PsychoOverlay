@@ -91,6 +91,10 @@ public sealed class OverlayForm : Form
     private const int HotkeyNilkNextPalette = 125;
     private const int HotkeyNilkPrevPalette = 126;
     private const int HotkeyNilkCurrent2025Mode = 127;
+    private const int HotkeySeekBackward = 128;
+    private const int HotkeySeekForward = 129;
+    private const int HotkeySeekStart = 130;
+    private const int HotkeySeekEnd = 131;
 
     private static readonly char[] GlyphBank =
         "░▒▓█▓▒░ ᚠᚢᚦᚨᚱᚲ ΨΩΔΛΣΞ ЖЙФЮЯ 目電幻夢零壱弐参 NILK VOID COSMOS LSD 0123456789 @#$%&*<>/\\".ToCharArray();
@@ -313,6 +317,18 @@ public sealed class OverlayForm : Form
                     break;
                 case HotkeyNilkPrevPalette:
                     StepNilkPalette(-1);
+                    break;
+                case HotkeySeekBackward:
+                    SeekNilkTimeline(-30d);
+                    break;
+                case HotkeySeekForward:
+                    SeekNilkTimeline(30d);
+                    break;
+                case HotkeySeekStart:
+                    SeekNilkTimeline(-NilkTotalDurationSeconds);
+                    break;
+                case HotkeySeekEnd:
+                    SeekNilkTimeline(NilkTotalDurationSeconds);
                     break;
                 case HotkeyPrevMode:
                 case HotkeyPrevModeF:
@@ -802,6 +818,20 @@ public sealed class OverlayForm : Form
         PostNilkShaderState();
     }
 
+    private void SeekNilkTimeline(double offsetSeconds)
+    {
+        if (mode != EffectMode.NilkLegacy2024)
+            return;
+
+        UpdateNilkShaderState();
+        nilkElapsedSeconds = Math.Clamp(nilkElapsedSeconds + offsetSeconds, 0d, NilkTotalDurationSeconds);
+        nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
+        UpdateNilkPaletteForTime();
+        lastPostedNilkPaletteIndex = -1;
+        PostNilkShaderState();
+        ShowHint($"NILK 2024 {TimeSpan.FromSeconds(nilkElapsedSeconds):hh\\:mm\\:ss} / 01:00:00");
+    }
+
     private void StopNilkRun()
     {
         UpdateNilkShaderState();
@@ -1081,7 +1111,7 @@ void main(){
     float colorBlend=0.0;
     float colorPhase=0.0;
     if(mode>5.5){
-      float globalTime=mode>6.5?t:nilkGlobalTime;
+      float globalTime=mode>7.5?t:nilkGlobalTime;
       vec2 unmodifiedCoords=uv;
       vec2 coords=uv;
 
@@ -2867,6 +2897,10 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         RegisterHotKey(Handle, HotkeyNilkMode, mods, (uint)Keys.D6);
         RegisterHotKey(Handle, HotkeyNilkLegacy2024Mode, mods, (uint)Keys.D7);
         RegisterHotKey(Handle, HotkeyNilkCurrent2025Mode, mods, (uint)Keys.D8);
+        RegisterHotKey(Handle, HotkeySeekBackward, mods, (uint)Keys.J);
+        RegisterHotKey(Handle, HotkeySeekForward, mods, (uint)Keys.K);
+        RegisterHotKey(Handle, HotkeySeekStart, mods, (uint)Keys.Home);
+        RegisterHotKey(Handle, HotkeySeekEnd, mods, (uint)Keys.End);
         RegisterHotKey(Handle, HotkeyNilkNextPalette, mods, (uint)Keys.PageUp);
         RegisterHotKey(Handle, HotkeyNilkPrevPalette, mods, (uint)Keys.PageDown);
         RegisterHotKey(Handle, HotkeyPrevMode, mods, (uint)Keys.Left);
@@ -2912,6 +2946,10 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
         UnregisterHotKey(Handle, HotkeyNilkMode);
         UnregisterHotKey(Handle, HotkeyNilkLegacy2024Mode);
         UnregisterHotKey(Handle, HotkeyNilkCurrent2025Mode);
+        UnregisterHotKey(Handle, HotkeySeekBackward);
+        UnregisterHotKey(Handle, HotkeySeekForward);
+        UnregisterHotKey(Handle, HotkeySeekStart);
+        UnregisterHotKey(Handle, HotkeySeekEnd);
         UnregisterHotKey(Handle, HotkeyNilkNextPalette);
         UnregisterHotKey(Handle, HotkeyNilkPrevPalette);
         UnregisterHotKey(Handle, HotkeyToggleScreenCapture);
