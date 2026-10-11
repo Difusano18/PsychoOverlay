@@ -828,8 +828,10 @@ public sealed class OverlayForm : Form
         nilkLastUpdateTimestamp = Stopwatch.GetTimestamp();
         UpdateNilkPaletteForTime();
         lastPostedNilkPaletteIndex = -1;
+        if (!paused && nilkElapsedSeconds < NilkTotalDurationSeconds)
+            nilkStateTimer.Start();
         PostNilkShaderState();
-        ShowHint($"NILK 2024 {TimeSpan.FromSeconds(nilkElapsedSeconds):hh\\:mm\\:ss} / 01:00:00");
+        ShowHint($"NILK 2024 {TimeSpan.FromSeconds(nilkElapsedSeconds):hh\:mm\:ss} / 01:00:00");
     }
 
     private void StopNilkRun()
