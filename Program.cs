@@ -361,9 +361,9 @@ public sealed class OverlayForm : Form
 
     private void SetEffectMode(EffectMode nextMode)
     {
-        if ((int)nextMode >= (int)EffectMode.Nilk && !gpuRendererActive && gpuRendererError is not null)
+        if ((int)nextMode >= (int)EffectMode.Nilk && !gpuRendererActive)
         {
-            ShowHint($"Fullscreen Nilk needs WebView2 ({gpuRendererError}).");
+            ShowHint($"Fullscreen Nilk needs WebView2 ({gpuRendererError ?? "GPU renderer inactive"}).");
             return;
         }
 
@@ -1152,7 +1152,7 @@ void main(){
         // Mode 8 uses the post-filter feedback texture as previousScreenFrame.
         float opacity=1.0;
         float smoothOpacity=opacity*opacity*(3.0-opacity*2.0);
-        float effective=mode>7.5?intensity:nilkIntensity;
+        float effective=intensity;
         effective*=smoothOpacity;
 
         float offsetTime=globalTime*.7;
@@ -1265,7 +1265,11 @@ void main(){
   }
   // Mode 6 is the monitor-capture Nilk shader only. Never fall through to the
   // generic Chaos overlay while its monitor capture has not started.
-  if(mode>5.5){gl_FragColor=vec4(0.0);return;}
+  if(mode>5.5){
+    // No monitor has been selected yet. Keep the surface transparent; the
+    // capture panel communicates the missing prerequisite instead of a black screen.
+    gl_FragColor=vec4(0.0);return;
+  }
   float flowMode=1.0-step(1.5,mode);
   float textureMode=step(1.5,mode)*(1.0-step(2.5,mode));
   float glyphMode=step(2.5,mode)*(1.0-step(3.5,mode));
@@ -1698,6 +1702,8 @@ function showCapturePanel(message){capturePanel.style.display='block';captureSta
     const nextMode=Math.max(1,Math.min(8,Number(m)||4));
     if(nextMode!==currentMode&&nextMode>7.5)nilkFeedbackValid=false;
     currentMode=nextMode;
+    if(!screenCaptureActive&&currentMode>=6)
+      showCapturePanel('NILK '+currentMode+' requires screen capture. Click Start Capture and choose an entire monitor.');
     const label=modeNames[currentMode-1];
     hud.textContent=`Ctrl+Alt+1-8 | Ctrl+Alt+PageUp/PageDown: Nilk palette | Space | Esc | ${currentMode} ${label} | INT ${Math.round(targetIntensity*100)}%${paused?" PAUSED":""}`;
   };
